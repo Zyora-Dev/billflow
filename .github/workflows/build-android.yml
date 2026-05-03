@@ -45,7 +45,6 @@ jobs:
         run: |
           mkdir -p android/app
           echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
-        shell: bash
 
       - name: Expo prebuild (Android)
         run: npx expo prebuild --platform android --clean --no-install
@@ -56,29 +55,36 @@ jobs:
           STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          cat >> android/gradle.properties <<EOF
-          MYAPP_RELEASE_STORE_FILE=release.keystore
-          MYAPP_RELEASE_KEY_ALIAS=$KEY_ALIAS
-          MYAPP_RELEASE_STORE_PASSWORD=$STORE_PASSWORD
-          MYAPP_RELEASE_KEY_PASSWORD=$KEY_PASSWORD
-          EOF
+          {
+            echo "MYAPP_RELEASE_STORE_FILE=release.keystore"
+            echo "MYAPP_RELEASE_KEY_ALIAS=$KEY_ALIAS"
+            echo "MYAPP_RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "MYAPP_RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> android/gradle.properties
 
       - name: Patch build.gradle for release signing
         run: |
-          GRADLE_FILE=android/app/build.gradle
-          if ! grep -q "MYAPP_RELEASE_STORE_FILE" $GRADLE_FILE; then
-            sed -i '/signingConfigs {/a\
-                release {\
-                    if (project.hasProperty("MYAPP_RELEASE_STORE_FILE")) {\
-                        storeFile file(MYAPP_RELEASE_STORE_FILE)\
-                        storePassword MYAPP_RELEASE_STORE_PASSWORD\
-                        keyAlias MYAPP_RELEASE_KEY_ALIAS\
-                        keyPassword MYAPP_RELEASE_KEY_PASSWORD\
-                    }\
-                }
-' $GRADLE_FILE
-          fi
-          sed -i 's/signingConfig signingConfigs.debug/signingConfig signingConfigs.release/' $GRADLE_FILE
+          python3 - <<'PY'
+          import re, pathlib
+          p = pathlib.Path("android/app/build.gradle")
+          src = p.read_text()
+          if "MYAPP_RELEASE_STORE_FILE" not in src:
+              release_block = (
+                  "\n            release {\n"
+                  "                if (project.hasProperty(\"MYAPP_RELEASE_STORE_FILE\")) {\n"
+                  "                    storeFile file(MYAPP_RELEASE_STORE_FILE)\n"
+                  "                    storePassword MYAPP_RELEASE_STORE_PASSWORD\n"
+                  "                    keyAlias MYAPP_RELEASE_KEY_ALIAS\n"
+                  "                    keyPassword MYAPP_RELEASE_KEY_PASSWORD\n"
+                  "                }\n"
+                  "            }\n"
+              )
+              src = re.sub(r"(signingConfigs\s*\{)", r"\1" + release_block, src, count=1)
+          src = src.replace("signingConfig signingConfigs.debug", "signingConfig signingConfigs.release")
+          p.write_text(src)
+          print("--- patched build.gradle ---")
+          print(src)
+          PY
 
       - name: Build APK
         if: ${{ inputs.build_type == 'apk' || inputs.build_type == 'both' }}
