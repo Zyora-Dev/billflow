@@ -13,6 +13,7 @@ interface LineItem {
   item_id?: number;
   item_name: string;
   description: string;
+  hsn_code: string;
   unit: string;
   qty: number;
   rate: number;
@@ -76,6 +77,7 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
           setRoundOffEnabled(Math.abs(inv.round_off ?? 0) > 0);
           setLineItems((inv.items || []).map((it: any) => ({
             item_id: it.item_id, item_name: it.item_name, description: it.description || '',
+            hsn_code: it.hsn_code || '',
             unit: it.unit || '', qty: it.qty, rate: it.rate,
             discount_percent: it.discount_percent || 0, tax_rate: it.tax_rate || 0,
             amount: it.amount,
@@ -94,6 +96,7 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
   const addItem = (item: any) => {
     setLineItems(prev => [...prev, {
       item_id: item.id, item_name: item.item_name, description: item.description || '',
+      hsn_code: item.hsn_code || '',
       unit: item.unit || 'Nos', qty: 1, rate: item.sale_price || 0,
       discount_percent: 0, tax_rate: item.tax_rate || 0, amount: 0,
     }]);
@@ -103,6 +106,7 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
   const addCustomItem = () => {
     setLineItems(prev => [...prev, {
       item_id: undefined, item_name: '', description: '',
+      hsn_code: '',
       unit: 'Nos', qty: 1, rate: 0,
       discount_percent: 0, tax_rate: 0, amount: 0,
     }]);
@@ -144,6 +148,7 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
         round_off_enabled: roundOffEnabled,
         items: lineItems.map(li => ({
           item_id: li.item_id, item_name: li.item_name, description: li.description,
+          hsn_code: li.hsn_code || null,
           unit: li.unit, qty: li.qty, rate: li.rate,
           discount_percent: li.discount_percent, tax_rate: li.tax_rate,
           amount: calcLineAmount(li),
@@ -259,6 +264,12 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
                   </View>
                 </View>
               )}
+              <View style={styles.row}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.miniLabel}>HSN Code</Text>
+                  <TextInput style={styles.miniInput} value={li.hsn_code} onChangeText={v => updateLine(idx, 'hsn_code', v)} placeholder="e.g. 8471" placeholderTextColor={colors.placeholder} />
+                </View>
+              </View>
               <View style={styles.row}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.miniLabel}>Qty</Text>

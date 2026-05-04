@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "com.spectra.billflow",
-      "versionCode": 5,
+      "versionCode": 6,
       "adaptiveIcon": {
         "foregroundImage": "./assets/billflow-adaptive.png",
         "backgroundColor": "#1a1a40"

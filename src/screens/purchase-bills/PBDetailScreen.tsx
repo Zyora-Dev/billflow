@@ -107,6 +107,7 @@ export default function PBDetailScreen({ route, navigation }: { route: any; navi
         <div style="text-align:right">
           <div style="font-size:22px;font-weight:700;color:#1a1a40">PURCHASE BILL</div>
           <div class="info">${bill.bill_number}</div>
+          ${bill.vendor_bill_number ? `<div class="info">Vendor Bill #: ${bill.vendor_bill_number}</div>` : ''}
           <div class="info">Date: ${bill.bill_date}</div>
           ${bill.due_date ? `<div class="info">Due: ${bill.due_date}</div>` : ''}
           <div><span class="badge" style="background:${bill.status === 'Paid' ? '#16a34a' : bill.status === 'Overdue' ? '#dc2626' : '#f59e0b'};color:#fff">${bill.status}</span></div>
@@ -178,6 +179,9 @@ export default function PBDetailScreen({ route, navigation }: { route: any; navi
           <StatusBadge status={bill.status} />
         </View>
         <Text style={s.custName}>{bill.vendor_name || 'N/A'}</Text>
+        {bill.vendor_bill_number ? (
+          <Text style={[s.dateLabel, { marginTop: 4 }]}>Vendor Bill #: <Text style={{ fontWeight: '600', color: colors.text }}>{bill.vendor_bill_number}</Text></Text>
+        ) : null}
         <View style={s.dateRow}>
           <Text style={s.dateLabel}>Date: {bill.bill_date}</Text>
           <Text style={s.dateLabel}>Due: {bill.due_date || 'N/A'}</Text>

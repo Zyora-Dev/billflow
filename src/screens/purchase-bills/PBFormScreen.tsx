@@ -13,6 +13,7 @@ interface LineItem {
   item_id?: number;
   item_name: string;
   description: string;
+  hsn_code: string;
   unit: string;
   qty: number;
   rate: number;
@@ -29,12 +30,15 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
   const [items, setItems] = useState<any[]>([]);
   const [vendorId, setVendorId] = useState<number | null>(null);
   const [vendorName, setVendorName] = useState('');
+  const [vendorBillNumber, setVendorBillNumber] = useState('');
   const [billDate, setBillDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [discountType, setDiscountType] = useState<'flat' | 'percentage'>('flat');
   const [discountValue, setDiscountValue] = useState('0');
+  const [freightCharges, setFreightCharges] = useState('0');
+  const [roundOffEnabled, setRoundOffEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showVendorPicker, setShowVendorPicker] = useState(false);
   const [showItemPicker, setShowItemPicker] = useState(false);
@@ -59,13 +63,17 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
           const bill = (await api.get(`/api/purchase-bills/${editId}`)).data;
           setVendorId(bill.vendor_id);
           setVendorName(bill.vendor_name || '');
+          setVendorBillNumber(bill.vendor_bill_number || '');
           setBillDate(bill.bill_date || '');
           setDueDate(bill.due_date || '');
           setNotes(bill.notes || '');
           setDiscountType(bill.discount_type || 'flat');
           setDiscountValue(String(bill.discount_value || 0));
+          setFreightCharges(String(bill.freight_charges ?? 0));
+          setRoundOffEnabled(Math.abs(bill.round_off ?? 0) > 0);
           setLineItems((bill.items || []).map((it: any) => ({
             item_id: it.item_id, item_name: it.item_name, description: it.description || '',
+            hsn_code: it.hsn_code || '',
             unit: it.unit || '', qty: it.qty, rate: it.rate,
             discount_percent: it.discount_percent || 0, tax_rate: it.tax_rate || 0,
             amount: it.amount,
@@ -84,6 +92,7 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
   const addItem = (item: any) => {
     setLineItems(prev => [...prev, {
       item_id: item.id, item_name: item.item_name, description: item.description || '',
+      hsn_code: item.hsn_code || '',
       unit: item.unit || 'Nos', qty: 1, rate: item.sale_price || 0,
       discount_percent: 0, tax_rate: item.tax_rate || 0, amount: 0,
     }]);
@@ -93,6 +102,7 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
   const addCustomItem = () => {
     setLineItems(prev => [...prev, {
       item_id: undefined, item_name: '', description: '',
+      hsn_code: '',
       unit: 'Nos', qty: 1, rate: 0,
       discount_percent: 0, tax_rate: 0, amount: 0,
     }]);
@@ -110,12 +120,17 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
 
   const removeLine = (idx: number) => setLineItems(prev => prev.filter((_, i) => i !== idx));
 
-  const subtotal = lineItems.reduce((sum, li) => sum + (li.qty * li.rate * (1 - li.discount_percent / 100)), 0);
+  const subtotalRaw = lineItems.reduce((sum, li) => sum + (li.qty * li.rate * (1 - li.discount_percent / 100)), 0);
   const taxAmount = lineItems.reduce((sum, li) => {
     const base = li.qty * li.rate * (1 - li.discount_percent / 100);
     return sum + (base * li.tax_rate / 100);
   }, 0);
-  const total = subtotal + taxAmount;
+  const discAmt = discountType === 'percentage' ? subtotalRaw * parseFloat(discountValue || '0') / 100 : parseFloat(discountValue || '0');
+  const freight = parseFloat(freightCharges || '0') || 0;
+  const rawTotal = subtotalRaw - discAmt + taxAmount + freight;
+  const total = roundOffEnabled ? Math.round(rawTotal) : rawTotal;
+  const roundOffDelta = roundOffEnabled ? total - rawTotal : 0;
+  const subtotal = subtotalRaw;
 
   const handleSave = async () => {
     if (!vendorId) return Alert.alert('Error', 'Select a vendor');
@@ -123,10 +138,14 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
     setLoading(true);
     try {
       const body = {
-        org_id: orgId, vendor_id: vendorId, bill_date: billDate, due_date: dueDate || null,
+        org_id: orgId, vendor_id: vendorId, vendor_bill_number: vendorBillNumber || null,
+        bill_date: billDate, due_date: dueDate || null,
         notes, discount_type: discountType, discount_value: parseFloat(discountValue || '0'),
+        freight_charges: freight,
+        round_off_enabled: roundOffEnabled,
         items: lineItems.map(li => ({
           item_id: li.item_id, item_name: li.item_name, description: li.description,
+          hsn_code: li.hsn_code || null,
           unit: li.unit, qty: li.qty, rate: li.rate,
           discount_percent: li.discount_percent, tax_rate: li.tax_rate,
           amount: calcLineAmount(li),
@@ -170,6 +189,15 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
               <DateInput label="Due Date" value={dueDate} onChange={setDueDate} placeholder="Select date" />
             </View>
           </View>
+
+          <Text style={styles.label}>Vendor Bill # <Text style={{ fontSize: 11, color: colors.gray500, fontWeight: '400' }}>(reference from vendor)</Text></Text>
+          <TextInput
+            style={styles.input}
+            value={vendorBillNumber}
+            onChangeText={setVendorBillNumber}
+            placeholder="e.g. V-INV-1234"
+            placeholderTextColor={colors.placeholder}
+          />
         </View>
 
         {/* Line Items */}
@@ -208,6 +236,12 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
               )}
               <View style={styles.row}>
                 <View style={{ flex: 1 }}>
+                  <Text style={styles.miniLabel}>HSN Code</Text>
+                  <TextInput style={styles.miniInput} value={li.hsn_code} onChangeText={v => updateLine(idx, 'hsn_code', v)} placeholder="e.g. 8471" placeholderTextColor={colors.placeholder} />
+                </View>
+              </View>
+              <View style={styles.row}>
+                <View style={{ flex: 1 }}>
                   <Text style={styles.miniLabel}>Qty</Text>
                   <TextInput style={styles.miniInput} value={String(li.qty)} onChangeText={v => updateLine(idx, 'qty', parseFloat(v) || 0)} keyboardType="decimal-pad" />
                 </View>
@@ -231,8 +265,37 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
           <TextInput style={[styles.input, { height: 60, textAlignVertical: 'top' }]} value={notes} onChangeText={setNotes} multiline placeholder="Optional notes" placeholderTextColor={colors.placeholder} />
 
           <View style={styles.sumRow}><Text style={styles.sumLabel}>Subtotal</Text><Text style={styles.sumVal}>₹{subtotal.toFixed(2)}</Text></View>
+          {discAmt > 0 && (
+            <View style={styles.sumRow}><Text style={styles.sumLabel}>Discount</Text><Text style={styles.sumVal}>−₹{discAmt.toFixed(2)}</Text></View>
+          )}
           <View style={styles.sumRow}><Text style={styles.sumLabel}>Tax</Text><Text style={styles.sumVal}>₹{taxAmount.toFixed(2)}</Text></View>
-          <View style={[styles.sumRow, { borderTopWidth: 1, borderTopColor: colors.gray200, paddingTop: spacing.sm }]}>
+
+          <Text style={[styles.label, { marginTop: spacing.sm }]}>Freight Charges</Text>
+          <TextInput
+            style={styles.input}
+            value={freightCharges}
+            onChangeText={setFreightCharges}
+            placeholder="0"
+            placeholderTextColor={colors.placeholder}
+            keyboardType="decimal-pad"
+          />
+
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.md, gap: 8 }}
+            onPress={() => setRoundOffEnabled(v => !v)}
+          >
+            <View style={{ width: 22, height: 22, borderWidth: 2, borderColor: roundOffEnabled ? colors.primary : colors.gray400, borderRadius: 4, backgroundColor: roundOffEnabled ? colors.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+              {roundOffEnabled && <Ionicons name="checkmark" size={16} color="#fff" />}
+            </View>
+            <Text style={{ fontSize: fontSize.sm, color: colors.text, fontWeight: '600' }}>Round Off</Text>
+            {roundOffEnabled && (
+              <Text style={{ marginLeft: 'auto', fontSize: fontSize.sm, color: roundOffDelta >= 0 ? colors.success : colors.danger, fontWeight: '600' }}>
+                {roundOffDelta >= 0 ? '+' : '−'}₹{Math.abs(roundOffDelta).toFixed(2)}
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          <View style={[styles.sumRow, { borderTopWidth: 1, borderTopColor: colors.gray200, paddingTop: spacing.sm, marginTop: spacing.sm }]}>
             <Text style={styles.totalLabel}>Total</Text>
             <Text style={styles.totalVal}>₹{total.toFixed(2)}</Text>
           </View>
