@@ -49,6 +49,33 @@ jobs:
           echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
           ls -la android/app/release.keystore
 
+      - name: Verify keystore secrets BEFORE long build
+        env:
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "Checking keystore can be opened with provided secrets..."
+          # First try with store password
+          keytool -list -keystore android/app/release.keystore -storepass "$STORE_PASSWORD" >/dev/null 2>&1 || {
+            echo "::error::ANDROID_STORE_PASSWORD is wrong (cannot open keystore)"
+            exit 1
+          }
+          # List aliases
+          ALIASES=$(keytool -list -keystore android/app/release.keystore -storepass "$STORE_PASSWORD" 2>/dev/null | grep -i "alias name" | awk -F': ' '{print $2}')
+          echo "Keystore aliases: $ALIASES"
+          # Check the alias matches
+          if ! echo "$ALIASES" | grep -qi "^$KEY_ALIAS$"; then
+            echo "::error::ANDROID_KEY_ALIAS '$KEY_ALIAS' not found in keystore. Available: $ALIASES"
+            exit 1
+          fi
+          # Verify key password works
+          keytool -keypasswd -keystore android/app/release.keystore -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" -keypass "$KEY_PASSWORD" -new "$KEY_PASSWORD" >/dev/null 2>&1 || {
+            echo "::error::ANDROID_KEY_PASSWORD is wrong for alias '$KEY_ALIAS'"
+            exit 1
+          }
+          echo "✓ All keystore secrets verified"
+
       - name: Configure signing
         env:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
