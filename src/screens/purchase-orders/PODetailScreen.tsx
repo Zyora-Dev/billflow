@@ -122,7 +122,19 @@ export default function PODetailScreen({ route, navigation }: { route: any; navi
   };
 
   const handleShareWhatsApp = () => {
-    const text = `Purchase Order ${po.po_number}\nAmount: ₹${po.total?.toFixed(2)}\nStatus: ${po.status}\n\nFrom ${business?.business_name || ''}`;
+    const greet = po.vendor_name || 'there';
+    const fmt = (n: number) => `₹${(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const dateStr = po.po_date ? new Date(po.po_date).toLocaleDateString('en-IN') : '';
+    const lines = [
+      `Hi ${greet},`,
+      ``,
+      `🛒 *Purchase Order ${po.po_number}*`,
+      `📅 Date: ${dateStr}`,
+    ];
+    if (po.valid_until) lines.push(`⏳ Valid Until: ${new Date(po.valid_until).toLocaleDateString('en-IN')}`);
+    lines.push(`💰 Total: ${fmt(po.total)}`);
+    lines.push(``, `Please confirm receipt of this order.`, business?.business_name ? `— ${business.business_name}` : '');
+    const text = lines.filter(Boolean).join('\n');
     const url = `whatsapp://send?text=${encodeURIComponent(text)}`;
     Linking.openURL(url).catch(() => Alert.alert('Error', 'WhatsApp not installed'));
   };

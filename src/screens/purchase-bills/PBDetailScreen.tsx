@@ -78,6 +78,7 @@ export default function PBDetailScreen({ route, navigation }: { route: any; navi
       <tr>
         <td style="padding:8px;border-bottom:1px solid #eee">${i + 1}</td>
         <td style="padding:8px;border-bottom:1px solid #eee">${it.item_name}</td>
+        <td style="padding:8px;border-bottom:1px solid #eee;font-family:monospace;font-size:11px">${it.hsn_code || '—'}</td>
         <td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${it.qty}</td>
         <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">₹${it.rate?.toFixed(2)}</td>
         <td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${it.tax_rate || 0}%</td>
@@ -116,7 +117,7 @@ export default function PBDetailScreen({ route, navigation }: { route: any; navi
         <div style="font-size:16px;font-weight:600">${bill.vendor_name || 'N/A'}</div>
       </div>
       <table>
-        <tr><th>#</th><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Rate</th><th style="text-align:center">Tax</th><th style="text-align:right">Amount</th></tr>
+        <tr><th>#</th><th>Item</th><th>HSN</th><th style="text-align:center">Qty</th><th style="text-align:right">Rate</th><th style="text-align:center">Tax</th><th style="text-align:right">Amount</th></tr>
         ${items}
       </table>
       <div class="summary">
@@ -139,7 +140,20 @@ export default function PBDetailScreen({ route, navigation }: { route: any; navi
   };
 
   const handleShareWhatsApp = () => {
-    const text = `Purchase Bill ${bill.bill_number}\nAmount: ₹${bill.total?.toFixed(2)}\nBalance Due: ₹${bill.balance_due?.toFixed(2)}\nStatus: ${bill.status}\n\nFrom ${business?.business_name || ''}`;
+    const greet = bill.vendor_name || 'there';
+    const fmt = (n: number) => `₹${(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const dateStr = bill.bill_date ? new Date(bill.bill_date).toLocaleDateString('en-IN') : '';
+    const lines = [
+      `Hi ${greet},`,
+      ``,
+      `🧾 *Purchase Bill ${bill.bill_number}*`,
+      `📅 Date: ${dateStr}`,
+      `💰 Total: ${fmt(bill.total)}`,
+    ];
+    if (bill.balance_due > 0) lines.push(`⚠️ Balance Due: ${fmt(bill.balance_due)}`);
+    if (bill.due_date) lines.push(`🗓️ Due: ${new Date(bill.due_date).toLocaleDateString('en-IN')}`);
+    lines.push(``, `Thank you.`, business?.business_name ? `— ${business.business_name}` : '');
+    const text = lines.filter(Boolean).join('\n');
     const url = `whatsapp://send?text=${encodeURIComponent(text)}`;
     Linking.openURL(url).catch(() => Alert.alert('Error', 'WhatsApp not installed'));
   };

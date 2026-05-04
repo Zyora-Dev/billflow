@@ -162,6 +162,7 @@ export default function InvoiceDetailScreen({ route, navigation }: { route: any;
         <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;color:#71717a">${i + 1}</td>
         <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;font-weight:500">${it.item_name || ''}</td>
         <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;color:#71717a">${it.description || '—'}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;font-family:monospace;font-size:11px">${it.hsn_code || '—'}</td>
         <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;text-align:right">${it.qty} ${it.unit || ''}</td>
         <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;text-align:right">₹${fmt(it.rate)}</td>
         <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;text-align:right">${it.discount_percent || 0}%</td>
@@ -266,6 +267,7 @@ export default function InvoiceDetailScreen({ route, navigation }: { route: any;
           <th style="width:32px">#</th>
           <th>Item</th>
           <th>Description</th>
+          <th style="width:70px">HSN</th>
           <th style="text-align:right;width:60px">Qty</th>
           <th style="text-align:right;width:80px">Rate</th>
           <th style="text-align:right;width:60px">Disc%</th>
@@ -338,7 +340,20 @@ export default function InvoiceDetailScreen({ route, navigation }: { route: any;
   };
 
   const handleShareWhatsApp = () => {
-    const text = `Invoice ${invoice.invoice_number}\nAmount: ₹${invoice.total?.toFixed(2)}\nBalance Due: ₹${invoice.balance_due?.toFixed(2)}\nStatus: ${invoice.status}\n\nFrom ${business?.business_name || ''}`;
+    const greet = customer?.contact_person || customer?.business_name || invoice.customer_name || 'there';
+    const fmt = (n: number) => `₹${(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const dateStr = invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleDateString('en-IN') : '';
+    const lines = [
+      `Hi ${greet},`,
+      ``,
+      `📄 *Invoice ${invoice.invoice_number}*`,
+      `📅 Date: ${dateStr}`,
+      `💰 Total: ${fmt(invoice.total)}`,
+    ];
+    if (invoice.balance_due > 0) lines.push(`⚠️ Balance Due: ${fmt(invoice.balance_due)}`);
+    if (invoice.due_date) lines.push(`🗓️ Due: ${new Date(invoice.due_date).toLocaleDateString('en-IN')}`);
+    lines.push(``, `Thank you for your business!`, business?.business_name ? `— ${business.business_name}` : '');
+    const text = lines.filter(Boolean).join('\n');
     const url = `whatsapp://send?text=${encodeURIComponent(text)}`;
     Linking.openURL(url).catch(() => Alert.alert('Error', 'WhatsApp not installed'));
   };

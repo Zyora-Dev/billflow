@@ -122,7 +122,19 @@ export default function QuotationDetailScreen({ route, navigation }: { route: an
   };
 
   const handleShareWhatsApp = () => {
-    const text = `Quotation ${quote.quotation_number}\nAmount: ₹${quote.total?.toFixed(2)}\nStatus: ${quote.status}\n\nFrom ${business?.business_name || ''}`;
+    const greet = quote.customer_name || 'there';
+    const fmt = (n: number) => `₹${(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const dateStr = quote.quotation_date ? new Date(quote.quotation_date).toLocaleDateString('en-IN') : '';
+    const lines = [
+      `Hi ${greet},`,
+      ``,
+      `📋 *Quotation ${quote.quotation_number}*`,
+      `📅 Date: ${dateStr}`,
+    ];
+    if (quote.valid_until) lines.push(`⏳ Valid Until: ${new Date(quote.valid_until).toLocaleDateString('en-IN')}`);
+    lines.push(`💰 Total: ${fmt(quote.total)}`);
+    lines.push(``, `Looking forward to your confirmation.`, business?.business_name ? `— ${business.business_name}` : '');
+    const text = lines.filter(Boolean).join('\n');
     const url = `whatsapp://send?text=${encodeURIComponent(text)}`;
     Linking.openURL(url).catch(() => Alert.alert('Error', 'WhatsApp not installed'));
   };
