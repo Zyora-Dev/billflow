@@ -1,25 +1,26 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "BillFlow",
+    "slug": "billflow",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/billflow.png",
+    "icon": "./assets/billflow-app.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/billflow.png",
+      "image": "./assets/billflow-app.png",
       "resizeMode": "contain",
       "backgroundColor": "#1a1a40"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.spectra.billflow"
     },
     "android": {
       "package": "com.spectra.billflow",
-      "versionCode": 2,
+      "versionCode": 4,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/billflow.png",
+        "foregroundImage": "./assets/billflow-adaptive.png",
         "backgroundColor": "#1a1a40"
       },
       "edgeToEdgeEnabled": true,
