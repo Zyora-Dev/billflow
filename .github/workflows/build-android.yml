@@ -55,25 +55,32 @@ jobs:
           STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "Checking keystore can be opened with provided secrets..."
-          # First try with store password
-          keytool -list -keystore android/app/release.keystore -storepass "$STORE_PASSWORD" >/dev/null 2>&1 || {
-            echo "::error::ANDROID_STORE_PASSWORD is wrong (cannot open keystore)"
-            exit 1
-          }
-          # List aliases
-          ALIASES=$(keytool -list -keystore android/app/release.keystore -storepass "$STORE_PASSWORD" 2>/dev/null | grep -i "alias name" | awk -F': ' '{print $2}')
-          echo "Keystore aliases: $ALIASES"
-          # Check the alias matches
-          if ! echo "$ALIASES" | grep -qi "^$KEY_ALIAS$"; then
-            echo "::error::ANDROID_KEY_ALIAS '$KEY_ALIAS' not found in keystore. Available: $ALIASES"
+          set +e
+          echo "=== Listing keystore (verbose) ==="
+          keytool -list -v -keystore android/app/release.keystore -storepass "$STORE_PASSWORD" 2>&1 | head -40
+          RC=$?
+          echo "=== keytool list exit code: $RC ==="
+          if [ $RC -ne 0 ]; then
+            echo "::error::Cannot open keystore with ANDROID_STORE_PASSWORD (length=${#STORE_PASSWORD})"
             exit 1
           fi
-          # Verify key password works
-          keytool -keypasswd -keystore android/app/release.keystore -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" -keypass "$KEY_PASSWORD" -new "$KEY_PASSWORD" >/dev/null 2>&1 || {
-            echo "::error::ANDROID_KEY_PASSWORD is wrong for alias '$KEY_ALIAS'"
+          # Try opening the specific alias with the key password
+          echo "=== Verifying key password for alias '$KEY_ALIAS' ==="
+          keytool -list -keystore android/app/release.keystore -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" 2>&1 | head -10
+          ALIAS_RC=$?
+          if [ $ALIAS_RC -ne 0 ]; then
+            echo "::error::Alias '$KEY_ALIAS' not found"
             exit 1
-          }
+          fi
+          # Test signing a JAR to verify key password
+          echo "test" > /tmp/test.txt
+          (cd /tmp && jar cf test.jar test.txt)
+          jarsigner -keystore android/app/release.keystore -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" /tmp/test.jar "$KEY_ALIAS" 2>&1 | head -5
+          SIGN_RC=$?
+          if [ $SIGN_RC -ne 0 ]; then
+            echo "::error::ANDROID_KEY_PASSWORD does not match (length=${#KEY_PASSWORD})"
+            exit 1
+          fi
           echo "✓ All keystore secrets verified"
 
       - name: Configure signing
