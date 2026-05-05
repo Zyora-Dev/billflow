@@ -238,7 +238,7 @@ const Stack = createNativeStackNavigator();
 
 function DashboardStack() {
   return (<Stack.Navigator screenOptions={navHeader}>
-    <Stack.Screen name="DashboardHome" component={DashboardScreen} options={{ title: 'BillFlow' }} />
+    <Stack.Screen name="DashboardHome" component={DashboardScreen} options={{ title: 'SpectraBooks' }} />
     <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ title: 'Setup Business' }} />
     <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
   </Stack.Navigator>);

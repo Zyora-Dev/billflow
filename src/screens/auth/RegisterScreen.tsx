@@ -146,9 +146,9 @@ export default function RegisterScreen({ navigation }: { navigation: NativeStack
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Animated.View style={[styles.header, { opacity: headerOpacity, transform: [{ translateY: headerTranslate }] }]}>
             <Animated.View style={[styles.logoWrap, { transform: [{ scale: logoScale }, { translateY: logoY }] }]}>
-              <Image source={require('../../../assets/billflow.png')} style={styles.logo} resizeMode="contain" />
+              <Image source={require('../../../assets/spectra-books.png')} style={styles.logo} resizeMode="contain" />
             </Animated.View>
-            <Text style={styles.brand}>Join BillFlow</Text>
+            <Text style={styles.brand}>Join SpectraBooks</Text>
             <Text style={styles.subtitle}>Free forever • No credit card needed</Text>
           </Animated.View>
 

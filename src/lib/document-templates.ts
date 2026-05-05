@@ -499,9 +499,31 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
   const { doc, business, customer, settings, baseUrl, assetDir, isQuotation } = opts;
   const { logoUrl, fontFamily, baseSize, title, docNumber, docDate, docDue, halfTax } = resolveCommon(opts);
   const itemsCount = (doc.items || []).reduce((s, i) => s + (i.qty || 0), 0);
-  const firstUnit = doc.items?.[0]?.unit || 'No';
 
-  const items = (doc.items || []).map((it, i) => `
+  // Inter-state detection from GSTINs
+  const bizCode = (business?.gst_number || '').substring(0, 2);
+  const custCode = (customer?.gst_number || '').substring(0, 2);
+  const isInterState = !!(bizCode && custCode && bizCode !== custCode);
+
+  // Per-line computations (taxable after line discount)
+  const lines = (doc.items || []).map((it) => {
+    const gross = (it.qty || 0) * (it.rate || 0);
+    const lineDisc = gross * ((it.discount_percent || 0) / 100);
+    const taxable = gross - lineDisc;
+    return { ...it, gross, lineDisc, taxable };
+  });
+  const totalLineDisc = lines.reduce((s, l) => s + l.lineDisc, 0);
+  const subtotal = lines.reduce((s, l) => s + l.taxable, 0);
+  const docDiscAmt = doc.discount_type === 'percent'
+    ? subtotal * ((doc.discount_value || 0) / 100)
+    : (doc.discount_value || 0);
+  const taxableAfterDocDisc = subtotal - docDiscAmt;
+  const totalTax = doc.tax_amount || 0;
+  const grandTotal = doc.total || 0;
+  const roundOff = Math.round(grandTotal) - grandTotal;
+  const finalTotal = grandTotal + roundOff;
+
+  const items = lines.map((it, i) => `
     <tr>
       <td class="cell" style="text-align:center">${i + 1}</td>
       <td class="cell">
@@ -509,10 +531,12 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
         ${it.description ? `<div>${it.description}</div>` : ''}
       </td>
       <td class="cell" style="text-align:center">${it.hsn_code || ''}</td>
-      <td class="cell" style="text-align:center">${it.qty || 0} ${it.unit || 'No'}</td>
+      <td class="cell" style="text-align:center">${it.tax_rate ? `${it.tax_rate}%` : ''}</td>
+      <td class="cell" style="text-align:right">${it.qty || 0} ${it.unit || 'No'}</td>
       <td class="cell" style="text-align:right">${fmt(it.rate || 0)}</td>
       <td class="cell" style="text-align:center">${it.unit || 'No'}</td>
-      <td class="cell" style="text-align:right">${fmt(it.amount || 0)}</td>
+      <td class="cell" style="text-align:right">${it.discount_percent ? `${it.discount_percent}%` : ''}</td>
+      <td class="cell" style="text-align:right">${fmt(it.taxable)}</td>
     </tr>`).join('');
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -521,128 +545,158 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
     *{box-sizing:border-box}
     body{font-family:'${fontFamily}',system-ui,sans-serif;margin:0;padding:24px;color:#18181b;font-size:${Math.max(baseSize - 1, 10)}px;line-height:1.4}
     .title{text-align:center;font-weight:700;font-size:14px;padding-bottom:4px}
-    table.frame{width:100%;border-collapse:collapse;border:1px solid #18181b}
-    .cell{border:1px solid #18181b;padding:5px 8px;vertical-align:top}
+    table.frame{width:100%;border-collapse:collapse;border:1px solid #18181b;table-layout:fixed}
+    .cell{border:1px solid #18181b;padding:5px 8px;vertical-align:top;word-wrap:break-word}
     .meta-tbl{width:100%;border-collapse:collapse}
     .meta-tbl td{padding:3px 6px;vertical-align:top;font-size:10px}
     .meta-tbl .lbl{color:#52525b}
     .meta-tbl .v{font-weight:700}
     .b-r{border-right:1px solid #18181b}
     .b-b{border-bottom:1px solid #18181b}
-    .head-cell{display:flex;gap:10px}
-    .head-cell img{height:46px;width:46px;object-fit:contain}
-    .biz-name{font-weight:700}
+    .head-cell{display:flex;gap:10px;align-items:flex-start}
+    .head-cell img{height:80px;width:80px;object-fit:contain;flex-shrink:0}
+    .biz-name{font-weight:700;font-size:13px}
     .row-label{color:#52525b;font-size:10px}
-    .items thead th{font-weight:600}
     .footer-note{text-align:center;color:#52525b;padding-top:6px;font-size:10px}
     .sig-block img{height:56px;object-fit:contain}
     @media print{body{padding:0}@page{margin:8mm}}
   </style></head><body>
     <div class="title">${title}</div>
-    <table class="frame"><tbody>
+    <table class="frame">
+      <colgroup>
+        <col style="width:4%"/><col style="width:30%"/><col style="width:9%"/><col style="width:6%"/>
+        <col style="width:8%"/><col style="width:10%"/><col style="width:5%"/><col style="width:7%"/><col style="width:21%"/>
+      </colgroup>
+      <tbody>
       <tr>
-        <td class="cell" colspan="3" style="width:55%">
+        <td class="cell" colspan="5">
           <div class="head-cell">
             ${logoUrl ? `<img src="${logoUrl}" alt=""/>` : ''}
             <div>
               <div class="biz-name">${business?.business_name || ''}</div>
               ${business?.address ? `<div>${business.address}</div>` : ''}
-              ${business?.mobile ? `<div>${business.mobile}</div>` : ''}
-              ${business?.gst_number ? `<div>GSTIN/UIN: ${business.gst_number}</div>` : ''}
-              ${business?.gst_number ? `<div>State Name : ${stateFromGST(business.gst_number)}</div>` : ''}
-              ${business?.email ? `<div>E-Mail : ${business.email}</div>` : ''}
+              ${business?.mobile ? `<div>Phone: ${business.mobile}</div>` : ''}
+              ${business?.email ? `<div>E-Mail: ${business.email}</div>` : ''}
+              ${business?.gst_number ? `<div>GSTIN/UIN: <strong>${business.gst_number}</strong></div>` : ''}
+              ${business?.gst_number ? `<div>State Name: ${stateFromGST(business.gst_number)}, Code: ${bizCode}</div>` : ''}
             </div>
           </div>
         </td>
-        <td class="cell" colspan="4">
+        <td class="cell" colspan="4" style="padding:0">
           <table class="meta-tbl"><tbody>
             <tr><td class="b-b b-r" style="width:50%"><div class="lbl">${isQuotation ? 'Quotation No.' : 'Invoice No.'}</div><div class="v">${docNumber}</div></td>
                 <td class="b-b"><div class="lbl">Dated</div><div class="v">${fmtDate(docDate, true)}</div></td></tr>
-            <tr><td class="b-b b-r"><div class="lbl">Delivery Note</div><div>&nbsp;</div></td>
-                <td class="b-b"><div class="lbl">Mode/Terms of Payment</div><div>&nbsp;</div></td></tr>
-            <tr><td class="b-b b-r"><div class="lbl">Reference No. & Date.</div><div>&nbsp;</div></td>
-                <td class="b-b"><div class="lbl">Other References</div><div>&nbsp;</div></td></tr>
-            <tr><td class="b-b b-r"><div class="lbl">Buyer's Order No.</div><div>&nbsp;</div></td>
-                <td class="b-b"><div class="lbl">Dated</div><div>${docDue ? fmtDate(docDue, true) : ''}</div></td></tr>
-            <tr><td class="b-r"><div class="lbl">Dispatch Doc No.</div><div>&nbsp;</div></td>
-                <td><div class="lbl">Delivery Note Date</div><div>&nbsp;</div></td></tr>
+            <tr><td class="b-b b-r"><div class="lbl">Mode/Terms of Payment</div><div>&nbsp;</div></td>
+                <td class="b-b"><div class="lbl">${isQuotation ? 'Valid Until' : 'Due Date'}</div><div class="v">${docDue ? fmtDate(docDue, true) : ''}</div></td></tr>
+            <tr><td class="b-r"><div class="lbl">Reference No. &amp; Date</div><div>&nbsp;</div></td>
+                <td><div class="lbl">Buyer's Order No.</div><div>&nbsp;</div></td></tr>
           </tbody></table>
         </td>
       </tr>
 
       <tr>
-        <td class="cell" colspan="3">
+        <td class="cell" colspan="9">
           <div class="row-label">Consignee (Ship to)</div>
           <div class="biz-name">${customer?.business_name || customer?.contact_person || doc.customer_name || ''}</div>
           ${customer?.business_name && customer?.contact_person ? `<div>${customer.contact_person}</div>` : ''}
           ${customer?.address ? `<div>${customer.address}</div>` : ''}
-          ${customer?.gst_number ? `<div>GSTIN/UIN&nbsp;&nbsp;: ${customer.gst_number}</div>` : ''}
-          ${customer?.gst_number ? `<div>State Name&nbsp;: ${stateFromGST(customer.gst_number)}</div>` : ''}
+          ${customer?.mobile ? `<div>Phone: ${customer.mobile}</div>` : ''}
+          ${customer?.gst_number ? `<div>GSTIN/UIN: <strong>${customer.gst_number}</strong></div>` : ''}
+          ${customer?.gst_number ? `<div>State Name: ${stateFromGST(customer.gst_number)}, Code: ${custCode}</div>` : ''}
         </td>
-        <td class="cell" colspan="4" rowspan="2">&nbsp;</td>
       </tr>
       <tr>
-        <td class="cell" colspan="3">
+        <td class="cell" colspan="9">
           <div class="row-label">Buyer (Bill to)</div>
           <div class="biz-name">${customer?.business_name || customer?.contact_person || doc.customer_name || ''}</div>
           ${customer?.business_name && customer?.contact_person ? `<div>${customer.contact_person}</div>` : ''}
           ${customer?.address ? `<div>${customer.address}</div>` : ''}
-          ${customer?.gst_number ? `<div>GSTIN/UIN&nbsp;&nbsp;: ${customer.gst_number}</div>` : ''}
-          ${customer?.gst_number ? `<div>State Name&nbsp;: ${stateFromGST(customer.gst_number)}</div>` : ''}
+          ${customer?.mobile ? `<div>Phone: ${customer.mobile}</div>` : ''}
+          ${customer?.gst_number ? `<div>GSTIN/UIN: <strong>${customer.gst_number}</strong></div>` : ''}
+          ${customer?.gst_number ? `<div>State Name: ${stateFromGST(customer.gst_number)}, Code: ${custCode}</div>` : ''}
         </td>
       </tr>
 
-      <tr style="font-weight:700">
-        <td class="cell" style="text-align:center;width:32px">Sl<br/>No.</td>
+      <tr style="font-weight:700;background:#fafafa">
+        <td class="cell" style="text-align:center">Sl<br/>No.</td>
         <td class="cell">Description of Goods</td>
-        <td class="cell" style="text-align:center;width:80px">HSN/SAC</td>
-        <td class="cell" style="text-align:center;width:70px">Quantity</td>
-        <td class="cell" style="text-align:right;width:90px">Rate</td>
-        <td class="cell" style="text-align:center;width:40px">per</td>
-        <td class="cell" style="text-align:right;width:90px">Amount</td>
+        <td class="cell" style="text-align:center">HSN/SAC</td>
+        <td class="cell" style="text-align:center">GST<br/>%</td>
+        <td class="cell" style="text-align:right">Quantity</td>
+        <td class="cell" style="text-align:right">Rate</td>
+        <td class="cell" style="text-align:center">per</td>
+        <td class="cell" style="text-align:right">Disc<br/>%</td>
+        <td class="cell" style="text-align:right">Amount</td>
       </tr>
       ${items}
 
-      ${(doc.tax_amount || 0) > 0 ? `
-      <tr>
-        <td class="cell"></td><td class="cell" style="font-style:italic;font-weight:700">OUTPUT CGST</td>
-        <td class="cell"></td><td class="cell"></td><td class="cell"></td><td class="cell"></td>
-        <td class="cell" style="text-align:right">${fmt(halfTax)}</td>
+      ${totalLineDisc > 0 ? `
+      <tr><td class="cell" colspan="2"></td>
+          <td class="cell" colspan="6" style="font-style:italic;text-align:right">Less : Line Discount</td>
+          <td class="cell" style="text-align:right">(-) ${fmt(totalLineDisc)}</td></tr>` : ''}
+
+      ${docDiscAmt > 0 ? `
+      <tr><td class="cell" colspan="2"></td>
+          <td class="cell" colspan="6" style="font-style:italic;text-align:right">Less : Discount${doc.discount_type === 'percent' ? ` @ ${doc.discount_value}%` : ''}</td>
+          <td class="cell" style="text-align:right">(-) ${fmt(docDiscAmt)}</td></tr>` : ''}
+
+      ${(docDiscAmt > 0 || totalLineDisc > 0) ? `
+      <tr style="font-weight:700"><td class="cell" colspan="2"></td>
+          <td class="cell" colspan="6" style="text-align:right">Taxable Value</td>
+          <td class="cell" style="text-align:right">${fmt(taxableAfterDocDisc)}</td></tr>` : ''}
+
+      ${totalTax > 0 && !isInterState ? `
+      <tr><td class="cell" colspan="2"></td>
+          <td class="cell" colspan="6" style="font-style:italic;font-weight:700">OUTPUT CGST</td>
+          <td class="cell" style="text-align:right">${fmt(halfTax)}</td></tr>
+      <tr><td class="cell" colspan="2"></td>
+          <td class="cell" colspan="6" style="font-style:italic;font-weight:700">OUTPUT SGST</td>
+          <td class="cell" style="text-align:right">${fmt(halfTax)}</td></tr>` : ''}
+
+      ${totalTax > 0 && isInterState ? `
+      <tr><td class="cell" colspan="2"></td>
+          <td class="cell" colspan="6" style="font-style:italic;font-weight:700">OUTPUT IGST</td>
+          <td class="cell" style="text-align:right">${fmt(totalTax)}</td></tr>` : ''}
+
+      ${Math.abs(roundOff) > 0.001 ? `
+      <tr><td class="cell" colspan="2"></td>
+          <td class="cell" colspan="6" style="font-style:italic">Round Off</td>
+          <td class="cell" style="text-align:right">${roundOff >= 0 ? '' : '(-) '}${fmt(Math.abs(roundOff))}</td></tr>` : ''}
+
+      <tr><td class="cell" colspan="9" style="height:30px"></td></tr>
+
+      <tr style="font-weight:700;background:#fafafa">
+        <td class="cell"></td>
+        <td class="cell" colspan="3" style="text-align:right">Total</td>
+        <td class="cell" style="text-align:right">${itemsCount}</td>
+        <td class="cell"></td><td class="cell"></td><td class="cell"></td>
+        <td class="cell" style="text-align:right">₹ ${fmt(finalTotal)}</td>
       </tr>
-      <tr>
-        <td class="cell"></td><td class="cell" style="font-style:italic;font-weight:700">OUTPUT SGST</td>
-        <td class="cell"></td><td class="cell"></td><td class="cell"></td><td class="cell"></td>
-        <td class="cell" style="text-align:right">${fmt(halfTax)}</td>
-      </tr>` : ''}
-
-      <tr><td class="cell" colspan="7" style="height:50px"></td></tr>
-
-      <tr style="font-weight:700">
-        <td class="cell"></td>
-        <td class="cell" style="text-align:right">Total</td>
-        <td class="cell"></td>
-        <td class="cell" style="text-align:center">${itemsCount} ${firstUnit}</td>
-        <td class="cell"></td>
-        <td class="cell"></td>
-        <td class="cell" style="text-align:right">₹ ${fmt(doc.total || 0)}</td>
-      </tr>
 
       <tr>
-        <td class="cell" colspan="7">
+        <td class="cell" colspan="9">
           <div class="row-label">Amount Chargeable (in words)</div>
-          <div style="font-weight:700">INR ${numberToWordsINR(doc.total || 0).replace('Rupees ', '').replace(' Only', ' Only')}</div>
-          <div style="text-align:right;font-style:italic">E. & O.E</div>
+          <div style="font-weight:700">INR ${numberToWordsINR(finalTotal).replace('Rupees ', '').replace(' Only', ' Only')}</div>
+          <div style="text-align:right;font-style:italic">E. &amp; O.E</div>
         </td>
       </tr>
 
+      ${totalTax > 0 ? `
       <tr>
-        <td class="cell" colspan="3" style="height:120px">
+        <td class="cell" colspan="9">
+          <div class="row-label">Tax Amount (in words)</div>
+          <div style="font-weight:700">INR ${numberToWordsINR(totalTax).replace('Rupees ', '').replace(' Only', ' Only')}</div>
+        </td>
+      </tr>` : ''}
+
+      <tr>
+        <td class="cell" colspan="5" style="height:120px">
           ${settings?.bank_name ? `
             <div class="row-label">Company's Bank Details</div>
             <div>A/c Holder's Name &nbsp;: <strong>${business?.business_name || ''}</strong></div>
             <div>Bank Name &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <strong>${settings.bank_name}</strong></div>
             ${settings.bank_account ? `<div>A/c No. &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <strong>${settings.bank_account}</strong></div>` : ''}
-            ${settings.bank_ifsc ? `<div>Branch & IFS Code : <strong>${settings.bank_branch ? settings.bank_branch + ' & ' : ''}${settings.bank_ifsc}</strong></div>` : ''}` : ''}
+            ${settings.bank_ifsc ? `<div>Branch &amp; IFS Code : <strong>${settings.bank_branch ? settings.bank_branch + ' & ' : ''}${settings.bank_ifsc}</strong></div>` : ''}` : ''}
         </td>
         <td class="cell sig-block" colspan="4" style="height:120px">
           <div style="text-align:right;font-weight:700">for ${business?.business_name || ''}</div>
@@ -655,13 +709,12 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
       </tr>
 
       <tr>
-        <td class="cell" colspan="3">
+        <td class="cell" colspan="9">
           ${business?.pan ? `<div>Company's PAN : <strong>${business.pan}</strong></div>` : ''}
           <div style="font-weight:700;text-decoration:underline;margin-top:4px">Declaration</div>
           <div>We declare that this ${isQuotation ? 'quotation reflects' : 'invoice shows'} the actual price of the goods described and that all particulars are true and correct.</div>
           ${settings?.terms_and_conditions ? `<div style="white-space:pre-wrap;margin-top:4px">${settings.terms_and_conditions}</div>` : ''}
         </td>
-        <td class="cell" colspan="4"></td>
       </tr>
     </tbody></table>
     <div class="footer-note">${settings?.footer_text || `This is a Computer Generated ${isQuotation ? 'Quotation' : 'Invoice'}`}</div>

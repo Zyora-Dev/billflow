@@ -307,7 +307,7 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
     return (
       <View style={styles.center}>
         <Ionicons name="business-outline" size={64} color={colors.gray300} />
-        <Text style={styles.emptyTitle}>Welcome to BillFlow!</Text>
+        <Text style={styles.emptyTitle}>Welcome to SpectraBooks!</Text>
         <Text style={styles.emptyDesc}>Set up your business to get started</Text>
         <TouchableOpacity style={styles.setupBtn} onPress={() => navigation.navigate('Onboarding')}>
           <Text style={styles.setupBtnText}>Setup Business</Text>

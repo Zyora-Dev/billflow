@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 import api from '../api/client';
-import { queueAll, queueRemove, queueUpdate, queueClear } from '../lib/offline';
+import { queueAll, queueRemove, queueUpdate } from '../lib/offline';
 import haptic from '../lib/haptics';
 
 interface NetworkContextValue {
@@ -57,7 +57,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
   }, [flushing, refreshCount]);
 
   useEffect(() => {
-    queueClear().then(refreshCount);
+    refreshCount();
     const unsub = NetInfo.addEventListener((state: NetInfoState) => {
       const isOnline = state.isConnected !== false;
       setOnline(isOnline);

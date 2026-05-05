@@ -50,11 +50,11 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
           ]}
         />
         <Animated.View style={{ transform: [{ scale }], opacity }}>
-          <Image source={require('../../assets/billflow.png')} style={styles.logo} resizeMode="contain" />
+          <Image source={require('../../assets/spectra-books.png')} style={styles.logo} resizeMode="contain" />
         </Animated.View>
       </View>
       <Animated.View style={{ opacity: taglineOpacity, transform: [{ translateY: taglineTranslate }], alignItems: 'center' }}>
-        <Text style={styles.brand}>BillFlow</Text>
+        <Text style={styles.brand}>SpectraBooks</Text>
         <Text style={styles.tagline}>GST Invoicing • Made Simple</Text>
       </Animated.View>
       <View style={{ height: 80 }} />

@@ -106,9 +106,9 @@ export default function LoginScreen({ navigation }: { navigation: NativeStackNav
             <View>
               <Animated.View style={[styles.header, { opacity: headerOpacity, transform: [{ translateY: headerTranslate }] }]}>
                 <Animated.View style={[styles.logoWrap, { transform: [{ scale: logoScale }, { translateY: logoY }] }]}>
-                  <Image source={require('../../../assets/billflow.png')} style={styles.logo} resizeMode="contain" />
+                  <Image source={require('../../../assets/spectra-books.png')} style={styles.logo} resizeMode="contain" />
                 </Animated.View>
-                <Text style={styles.brand}>BillFlow</Text>
+                <Text style={styles.brand}>SpectraBooks</Text>
                 <Text style={styles.subtitle}>GST Invoicing • Made Simple</Text>
               </Animated.View>
 

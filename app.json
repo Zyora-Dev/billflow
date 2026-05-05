@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "BillFlow",
+    "name": "SpectraBooks",
     "slug": "billflow",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/billflow-app.png",
+    "icon": "./assets/spectra-app.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/billflow-app.png",
+      "image": "./assets/spectra-app.png",
       "resizeMode": "contain",
-      "backgroundColor": "#1a1a40"
+      "backgroundColor": "#064e3b"
     },
     "ios": {
       "supportsTablet": true,
@@ -18,16 +18,16 @@
     },
     "android": {
       "package": "com.spectra.billflow",
-      "versionCode": 7,
+      "versionCode": 8,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/billflow-adaptive.png",
-        "backgroundColor": "#1a1a40"
+        "foregroundImage": "./assets/spectra-adaptive.png",
+        "backgroundColor": "#064e3b"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/spectra-books.png"
     },
     "plugins": [
       "expo-secure-store",
@@ -35,7 +35,7 @@
       [
         "expo-notifications",
         {
-          "color": "#0EA5E9",
+          "color": "#10b981",
           "defaultChannel": "default"
         }
       ]

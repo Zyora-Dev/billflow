@@ -68,7 +68,7 @@ export default function ReportsScreen({ navigation }: { navigation: any }) {
   return (
     <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: 40 }}>
       <View style={s.header}>
-        <Text style={s.title}>BF Insights</Text>
+        <Text style={s.title}>SB Insights</Text>
         <Text style={s.subtitle}>Comprehensive reports across your business</Text>
         <View style={s.searchBox}>
           <Ionicons name="search-outline" size={18} color={colors.gray400} />

@@ -78,7 +78,7 @@ export default function OnboardingScreen({ onDone }: Props) {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <View style={styles.topBar}>
-        <Text style={styles.brand}>BillFlow</Text>
+        <Text style={styles.brand}>SpectraBooks</Text>
         {index < SLIDES.length - 1 ? (
           <TouchableOpacity onPress={skip} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Text style={styles.skip}>Skip</Text>

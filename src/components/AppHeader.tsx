@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../auth/AuthContext';
 import api from '../api/client';
 import { colors } from '../theme';
+import { useNetwork } from './NetworkProvider';
 
 type Props = {
   title?: string;
@@ -46,6 +47,7 @@ export default function AppHeader({
 }: Props) {
   const insets = useSafeAreaInsets();
   const { user, stealthActive } = useAuth();
+  const { online, pendingCount, flushing } = useNetwork();
   const navigation = useNavigation<any>();
   const [bizName, setBizName] = useState<string>('');
 
@@ -114,7 +116,7 @@ export default function AppHeader({
             onPress={onTitleTap}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Text style={s.brandText}>BillFlow</Text>
+            <Text style={s.brandText}>SpectraBooks</Text>
             {stealthActive && (
               <View style={s.brandPrivateDot}>
                 <Ionicons name="shield-checkmark" size={10} color="#86efac" />
@@ -163,6 +165,18 @@ export default function AppHeader({
           </TouchableOpacity>
         )}
       </View>
+      {(!online || pendingCount > 0) && (
+        <View style={[s.offlineBar, { backgroundColor: !online ? '#b91c1c' : '#ca8a04' }]}>
+          <Ionicons name={!online ? 'cloud-offline-outline' : (flushing ? 'sync' : 'cloud-upload-outline')} size={12} color={colors.white} />
+          <Text style={s.offlineText}>
+            {!online
+              ? `Offline${pendingCount > 0 ? ` · ${pendingCount} pending` : ' · viewing cached data'}`
+              : flushing
+                ? `Syncing ${pendingCount} change${pendingCount > 1 ? 's' : ''}…`
+                : `${pendingCount} change${pendingCount > 1 ? 's' : ''} queued`}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -347,5 +361,19 @@ const s = StyleSheet.create({
     marginTop: 6,
     letterSpacing: 0.2,
     textAlign: 'center',
+  },
+  offlineBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+  },
+  offlineText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
 });

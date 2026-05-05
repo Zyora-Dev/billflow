@@ -141,7 +141,7 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
           <View style={{ marginTop: spacing.md }}>
             {!stealthConfigured && (
               <>
-                <Text style={s.helpText}>Sign in to a second BillFlow account once. Its credentials are stored encrypted on this device with your PIN.</Text>
+                <Text style={s.helpText}>Sign in to a second SpectraBooks account once. Its credentials are stored encrypted on this device with your PIN.</Text>
                 <TextInput style={s.input} value={stEmail} onChangeText={setStEmail} placeholder="Email" placeholderTextColor={colors.placeholder} keyboardType="email-address" autoCapitalize="none" />
                 <TextInput style={[s.input, { marginTop: spacing.sm }]} value={stPassword} onChangeText={setStPassword} placeholder="Password" placeholderTextColor={colors.placeholder} secureTextEntry />
                 <TextInput style={[s.input, { marginTop: spacing.sm }]} value={stPin} onChangeText={setStPin} placeholder="PIN (4–8 digits)" placeholderTextColor={colors.placeholder} keyboardType="number-pad" secureTextEntry maxLength={8} />
@@ -205,7 +205,7 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
       {/* About */}
       <View style={s.card}>
         <Text style={s.cardTitle}>About</Text>
-        <Text style={s.aboutText}>BillFlow - GST Invoice & Billing</Text>
+        <Text style={s.aboutText}>SpectraBooks - GST Invoice & Billing</Text>
         <Text style={s.aboutSub}>Version 1.0.0</Text>
         <Text style={s.aboutSub}>by Spectra Technologies</Text>
       </View>
