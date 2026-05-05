@@ -187,36 +187,113 @@ export default function InvoiceListScreen({ navigation }: { navigation: any }) {
     }
   };
 
-  const renderItem = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      style={styles.card}
-      activeOpacity={0.85}
-      onPress={() => navigation.navigate('InvoiceDetail', { id: item.id })}
-      onLongPress={() => preview.show({ type: 'invoice', id: item.id })}
-      delayLongPress={350}
-    >
-      <View style={[styles.cardStrip, { backgroundColor: statusColor(item.status) }]} />
-      <View style={styles.cardBody}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.invNum}>{item.invoice_number}</Text>
-          <Text style={styles.custName} numberOfLines={1}>{item.customer_name || 'N/A'}</Text>
-          <View style={styles.cardMeta}>
-            <Ionicons name="calendar-outline" size={11} color={colors.gray500} />
-            <Text style={styles.date}>{item.invoice_date}</Text>
+  // Insight slider cards
+  const insights = useMemo<any[]>(() => {
+    if (!invoices.length) return [];
+    // Most frequent customer
+    const counts: Record<string, number> = {};
+    invoices.forEach(i => {
+      const n = (i.customer_name || '').trim();
+      if (!n) return;
+      counts[n] = (counts[n] || 0) + 1;
+    });
+    const topCust = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+    // Highest due customer
+    const dueByCust: Record<string, number> = {};
+    invoices.forEach(i => {
+      const n = (i.customer_name || '').trim();
+      const d = Number(i.balance_due) || 0;
+      if (!n || d <= 0) return;
+      dueByCust[n] = (dueByCust[n] || 0) + d;
+    });
+    const topDue = Object.entries(dueByCust).sort((a, b) => b[1] - a[1])[0];
+    // Biggest invoice
+    const biggest = [...invoices].sort((a, b) => (Number(b.total) || 0) - (Number(a.total) || 0))[0];
+    // Latest
+    const latest = invoices[0];
+
+    const arr: any[] = [];
+    if (topCust) {
+      arr.push({
+        icon: 'star',
+        color: '#f59e0b',
+        label: 'TOP CUSTOMER',
+        value: topCust[0],
+        sub: `${topCust[1]} invoice${topCust[1] > 1 ? 's' : ''}`,
+        onPress: () => setSearch(topCust[0]),
+      });
+    }
+    if (topDue) {
+      arr.push({
+        icon: 'alert-circle',
+        color: '#dc2626',
+        label: 'HIGHEST DUE',
+        value: `₹ ${topDue[1].toLocaleString('en-IN')}`,
+        sub: topDue[0],
+        onPress: () => setSearch(topDue[0]),
+      });
+    }
+    if (biggest) {
+      arr.push({
+        icon: 'trending-up',
+        color: '#059669',
+        label: 'BIGGEST INVOICE',
+        value: `₹ ${Number(biggest.total).toLocaleString('en-IN')}`,
+        sub: biggest.customer_name || biggest.invoice_number,
+        onPress: () => navigation.navigate('InvoiceDetail', { id: biggest.id }),
+      });
+    }
+    if (latest) {
+      arr.push({
+        icon: 'time',
+        color: colors.primary,
+        label: 'LATEST',
+        value: latest.invoice_number,
+        sub: latest.customer_name || latest.invoice_date,
+        onPress: () => navigation.navigate('InvoiceDetail', { id: latest.id }),
+      });
+    }
+    return arr;
+  }, [invoices, navigation]);
+
+  const renderItem = ({ item }: { item: any }) => {
+    const sColor = statusColor(item.status);
+    const initial = (item.customer_name || 'NA').trim().charAt(0).toUpperCase();
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate('InvoiceDetail', { id: item.id })}
+        onLongPress={() => preview.show({ type: 'invoice', id: item.id })}
+        delayLongPress={350}
+      >
+        <View style={[styles.cardAvatar, { backgroundColor: sColor + '18', borderColor: sColor + '40' }]}>
+          <Text style={[styles.cardAvatarText, { color: sColor }]}>{initial}</Text>
+        </View>
+        <View style={styles.cardMid}>
+          <View style={styles.cardTopRow}>
+            <Text style={styles.custName} numberOfLines={1}>{item.customer_name || 'N/A'}</Text>
+            <CurrencyText amount={item.total} style={styles.total} />
+          </View>
+          <View style={styles.cardBotRow}>
+            <View style={styles.cardMetaInline}>
+              <Text style={styles.invNum}>{item.invoice_number}</Text>
+              <View style={styles.metaDot} />
+              <Text style={styles.date}>{item.invoice_date}</Text>
+            </View>
+            {item.balance_due > 0 ? (
+              <View style={styles.dueChip}>
+                <Ionicons name="alert-circle" size={10} color="#dc2626" />
+                <Text style={styles.dueText}>₹{Number(item.balance_due).toLocaleString('en-IN')}</Text>
+              </View>
+            ) : (
+              <StatusBadge status={item.status} />
+            )}
           </View>
         </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <CurrencyText amount={item.total} style={styles.total} />
-          {item.balance_due > 0 && (
-            <View style={styles.dueChip}>
-              <Text style={styles.dueText}>Due ₹{Number(item.balance_due).toLocaleString('en-IN')}</Text>
-            </View>
-          )}
-          <StatusBadge status={item.status} />
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   const Header = (
     <View>
@@ -261,23 +338,27 @@ export default function InvoiceListScreen({ navigation }: { navigation: any }) {
         </View>
       </View>
 
-      {/* Compact Overall Receivables strip — independent of date filter */}
+      {/* Overall Receivables + Payments — twin elegant cards */}
       <View style={styles.stripRow}>
-        <TouchableOpacity style={[styles.overallStrip, { flex: 1, marginBottom: 0 }]} activeOpacity={0.85} onPress={() => navigation.navigate('Receivables')}>
-          <View style={styles.overallStripIcon}>
-            <Ionicons name="wallet" size={14} color="#10B981" />
+        <TouchableOpacity style={styles.dualCard} activeOpacity={0.85} onPress={() => navigation.navigate('Receivables')}>
+          <View style={[styles.dualIcon, { backgroundColor: '#dcfce7', borderColor: '#86efac' }]}>
+            <Ionicons name="wallet" size={15} color="#059669" />
           </View>
-          <Text style={styles.overallStripLabel}>Overall</Text>
-          <CurrencyText amount={overallReceivable} style={styles.overallStripValue} />
-          <Ionicons name="chevron-forward" size={14} color={colors.gray400} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.dualLabel}>OVERALL DUE</Text>
+            <CurrencyText amount={overallReceivable} style={[styles.dualValue, { color: '#059669' }]} />
+          </View>
+          <Ionicons name="chevron-forward" size={15} color={colors.gray400} />
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.paymentsPill}
+          style={[styles.dualCard, { flex: 0, paddingHorizontal: 12 }]}
           activeOpacity={0.85}
           onPress={() => navigation.getParent()?.navigate('Payments')}
         >
-          <Ionicons name="cash" size={14} color={colors.primary} />
-          <Text style={styles.paymentsPillText}>Payments</Text>
+          <View style={[styles.dualIcon, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '35' }]}>
+            <Ionicons name="cash" size={15} color={colors.primary} />
+          </View>
+          <Text style={[styles.dualLabel, { color: colors.primary, marginRight: 4 }]}>PAYMENTS</Text>
         </TouchableOpacity>
       </View>
 
@@ -309,6 +390,44 @@ export default function InvoiceListScreen({ navigation }: { navigation: any }) {
           </TouchableOpacity>
         ))}
       </ScrollView>
+
+      {/* Insight slider cards */}
+      {insights.length > 0 && <Text style={styles.sectionLabel}>Highlights</Text>}
+      {insights.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          decelerationRate="fast"
+          snapToInterval={212}
+          contentContainerStyle={styles.insightRow}
+        >
+          {insights.map((ins, idx) => (
+            <TouchableOpacity
+              key={idx}
+              style={[styles.insightCard, { backgroundColor: ins.color }]}
+              activeOpacity={0.88}
+              onPress={() => ins.onPress?.()}
+            >
+              <View style={styles.insightTop}>
+                <View style={styles.insightIconBig}>
+                  <Ionicons name={ins.icon} size={13} color="#ffffff" />
+                </View>
+                <Text style={styles.insightLabel} numberOfLines={1}>{ins.label}</Text>
+              </View>
+
+              <Text style={styles.insightValue} numberOfLines={1}>
+                {ins.value || '—'}
+              </Text>
+
+              <Text style={styles.insightSub} numberOfLines={1}>{ins.sub || '—'}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      {/* Section label for list */}
+      <Text style={styles.sectionLabel}>All Invoices</Text>
+      <View style={styles.listSpacer} />
     </View>
   );
 
@@ -610,41 +729,41 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     marginHorizontal: spacing.md,
     marginTop: spacing.md,
-    borderRadius: 22,
-    paddingHorizontal: spacing.md + 2,
-    paddingVertical: spacing.md + 4,
+    borderRadius: 20,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
     overflow: 'hidden',
-    shadowColor: colors.primary, shadowOpacity: 0.28, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 5,
+    shadowColor: colors.primary, shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4,
   },
-  heroBgAccent: { position: 'absolute', width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.06)', top: -60, right: -40 },
-  heroBgAccent2: { position: 'absolute', width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -30, left: -20 },
+  heroBgAccent: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.05)', top: -50, right: -30 },
+  heroBgAccent2: { position: 'absolute', width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -25, left: -15 },
   heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.sm },
-  heroEyebrow: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase' },
-  heroValue: { color: '#ffffff', fontSize: 28, fontWeight: '800', letterSpacing: -0.5, marginTop: 2 },
+  heroEyebrow: { color: 'rgba(255,255,255,0.65)', fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  heroValue: { color: '#ffffff', fontSize: 22, fontWeight: '800', letterSpacing: -0.4, marginTop: 4 },
   filterPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 10, paddingVertical: 7,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 9, paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 999,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
   },
-  filterPillText: { color: '#ffffff', fontSize: 11, fontWeight: '700' },
+  filterPillText: { color: '#ffffff', fontSize: 10.5, fontWeight: '700' },
   heroStatsRow: {
     flexDirection: 'row', alignItems: 'center',
-    marginTop: spacing.md,
+    marginTop: spacing.sm + 2,
     paddingTop: spacing.sm,
     borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.12)',
   },
   heroStatItem: { flex: 1 },
-  heroStatLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3 },
-  heroStatVal: { color: '#ffffff', fontSize: 14, fontWeight: '800', marginTop: 2 },
-  heroDivider: { width: 1, height: 24, backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: spacing.sm },
+  heroStatLabel: { color: 'rgba(255,255,255,0.55)', fontSize: 9.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  heroStatVal: { color: '#ffffff', fontSize: 13, fontWeight: '700', marginTop: 2, letterSpacing: -0.2 },
+  heroDivider: { width: 1, height: 22, backgroundColor: 'rgba(255,255,255,0.1)', marginHorizontal: spacing.sm },
   iconPill: {
-    width: 32, height: 32,
+    width: 30, height: 30,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 999,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
   },
 
   // Compact Overall Receivables strip
@@ -665,9 +784,36 @@ const styles = StyleSheet.create({
   overallStripLabel: { fontSize: 11, color: colors.gray500, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
   overallStripValue: { flex: 1, fontSize: 14, fontWeight: '800', color: '#059669', letterSpacing: -0.3 },
   overallStripHint: { fontSize: 10, color: colors.gray400, fontWeight: '600' },
+  // Twin overall cards
   stripRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginHorizontal: spacing.md, marginTop: spacing.sm + 2,
+    flexDirection: 'row', alignItems: 'stretch', gap: 8,
+    marginHorizontal: spacing.md, marginTop: spacing.md,
+  },
+  dualCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    paddingVertical: 9,
+    paddingHorizontal: 11,
+    borderWidth: 1.5,
+    borderColor: '#dde1ee',
+    shadowColor: '#0f172a', shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1,
+  },
+  dualIcon: {
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1,
+  },
+  dualLabel: {
+    fontSize: 9.5, color: colors.gray500, fontWeight: '800',
+    letterSpacing: 0.7, textTransform: 'uppercase',
+  },
+  dualValue: {
+    fontSize: 14, fontWeight: '800', letterSpacing: -0.3,
+    marginTop: 1,
   },
   paymentsPill: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
@@ -754,7 +900,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.white,
     marginHorizontal: spacing.md,
-    marginTop: spacing.sm + 2,
+    marginTop: spacing.md + 4,
     borderRadius: 14,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
@@ -763,7 +909,62 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: fontSize.md, color: colors.text, paddingVertical: 0 },
 
-  chipsScroll: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2 },
+  chipsScroll: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4 },
+
+  // Insight slider cards
+  insightRow: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm + 2,
+    paddingBottom: spacing.sm,
+    gap: 12,
+  },
+  insightCard: {
+    width: 200,
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 6,
+  },
+  insightBlob: { display: 'none' },
+  insightBlob2: { display: 'none' },
+  insightTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  insightIconBig: {
+    width: 24, height: 24, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)',
+  },
+  insightLabel: {
+    flex: 1,
+    fontSize: 9.5, fontWeight: '800',
+    color: '#ffffff',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  insightValue: {
+    fontSize: 16, fontWeight: '800', letterSpacing: -0.3,
+    color: '#ffffff',
+  },
+  insightSub: {
+    fontSize: 11, color: 'rgba(255,255,255,0.92)', fontWeight: '600',
+    letterSpacing: 0.1,
+  },
+  insightFoot: { display: 'none' },
+  insightArrow: { display: 'none' },
+  insightFootText: { display: 'none' },
+  listSpacer: { height: 16 },
+  sectionLabel: {
+    fontSize: 10.5, fontWeight: '800',
+    color: colors.gray500, letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md + 4,
+    marginBottom: 4,
+  },
   chip: {
     paddingHorizontal: spacing.md, paddingVertical: 6,
     borderRadius: borderRadius.full,
@@ -777,22 +978,43 @@ const styles = StyleSheet.create({
 
   card: {
     flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: colors.white,
     marginHorizontal: spacing.md,
     marginBottom: 10,
-    borderRadius: 14,
-    overflow: 'hidden',
-    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#eef0f5',
+    shadowColor: '#0f172a', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1,
   },
-  cardStrip: { width: 4 },
-  cardBody: { flex: 1, flexDirection: 'row', padding: spacing.md, gap: spacing.sm },
-  invNum: { fontSize: fontSize.md, fontWeight: '700', color: colors.text },
-  custName: { fontSize: 13, color: colors.gray700, marginTop: 2 },
-  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  date: { fontSize: 11, color: colors.gray500 },
-  total: { fontSize: 15, fontWeight: '800', color: colors.text, marginBottom: 4 },
-  dueChip: { backgroundColor: '#fee2e2', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginBottom: 6 },
-  dueText: { fontSize: 10, color: '#dc2626', fontWeight: '700' },
+  cardAvatar: {
+    width: 42, height: 42, borderRadius: 21,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+  cardAvatarText: {
+    fontSize: 16, fontWeight: '800', letterSpacing: -0.2,
+  },
+  cardMid: { flex: 1, minWidth: 0, gap: 4 },
+  cardTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardBotRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  cardMetaInline: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.gray300 },
+  custName: { flex: 1, fontSize: 14, color: colors.gray900, fontWeight: '700', letterSpacing: -0.2 },
+  invNum: { fontSize: 11, fontWeight: '700', color: colors.primary, letterSpacing: 0.2 },
+  date: { fontSize: 11, color: colors.gray500, fontWeight: '500' },
+  total: { fontSize: 14.5, fontWeight: '800', color: colors.gray900, letterSpacing: -0.3 },
+  dueChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#fef2f2',
+    paddingHorizontal: 7, paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1, borderColor: '#fecaca',
+  },
+  dueText: { fontSize: 10.5, color: '#dc2626', fontWeight: '800' },
 
   pager: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

@@ -8,6 +8,7 @@ import { useToast } from '../../components/Toast';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import StatusBadge from '../../components/StatusBadge';
 import CurrencyText from '../../components/CurrencyText';
+import { buildDocumentHTML } from '../../lib/document-templates';
 
 const STATUS_OPTIONS = ['Draft', 'Sent', 'Accepted', 'Rejected', 'Expired'];
 
@@ -20,13 +21,31 @@ export default function QuotationDetailScreen({ route, navigation }: { route: an
   const [emailTo, setEmailTo] = useState('');
   const [emailSending, setEmailSending] = useState(false);
   const [business, setBusiness] = useState<any>(null);
+  const [customer, setCustomer] = useState<any>(null);
+  const [settings, setSettings] = useState<any>(null);
 
   const fetchQuote = async () => {
     try {
       const r = await api.get(`/api/quotations/${id}`);
-      setQuote(r.data);
-      const biz = await api.get('/api/business');
-      if (biz.data[0]) setBusiness(biz.data[0]);
+      const q = r.data;
+      setQuote(q);
+      try {
+        const biz = await api.get(`/api/business/${q.org_id}`);
+        setBusiness(biz.data);
+      } catch {
+        const all = await api.get('/api/business');
+        if (all.data?.[0]) setBusiness(all.data[0]);
+      }
+      try {
+        const s = await api.get(`/api/quotation-settings?org_id=${q.org_id}`);
+        setSettings(s.data);
+      } catch {}
+      if (q.customer_id) {
+        try {
+          const c = await api.get(`/api/customers/${q.customer_id}`);
+          setCustomer(c.data);
+        } catch {}
+      }
     } catch {}
   };
 
@@ -59,66 +78,28 @@ export default function QuotationDetailScreen({ route, navigation }: { route: an
 
   const generateHTML = () => {
     if (!quote) return '';
-    const items = (quote.items || []).map((it: any, i: number) => `
-      <tr>
-        <td style="padding:8px;border-bottom:1px solid #eee">${i + 1}</td>
-        <td style="padding:8px;border-bottom:1px solid #eee">${it.item_name}</td>
-        <td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${it.qty}</td>
-        <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">₹${it.rate?.toFixed(2)}</td>
-        <td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${it.tax_rate || 0}%</td>
-        <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">₹${it.amount?.toFixed(2)}</td>
-      </tr>`).join('');
-
-    return `<html><head><meta charset="utf-8"><style>
-      body{font-family:Helvetica,Arial;margin:0;padding:20px;color:#333}
-      .header{display:flex;justify-content:space-between;margin-bottom:24px}
-      .title{font-size:28px;font-weight:700;color:#1a1a40}
-      .info{font-size:13px;color:#666;margin-top:4px}
-      table{width:100%;border-collapse:collapse;margin:16px 0}
-      th{background:#1a1a40;color:#fff;padding:10px 8px;text-align:left;font-size:13px}
-      .summary{margin-left:auto;width:280px}
-      .sum-row{display:flex;justify-content:space-between;padding:4px 0;font-size:14px}
-      .total-row{border-top:2px solid #1a1a40;font-weight:700;font-size:16px;padding-top:8px;margin-top:4px}
-      .badge{display:inline-block;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600}
-    </style></head><body>
-      <div class="header">
-        <div>
-          <div class="title">${business?.business_name || 'Quotation'}</div>
-          <div class="info">${business?.address || ''}</div>
-          <div class="info">${business?.mobile || ''} ${business?.email ? '• ' + business.email : ''}</div>
-          ${business?.gst_number ? `<div class="info">GSTIN: ${business.gst_number}</div>` : ''}
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:22px;font-weight:700;color:#1a1a40">QUOTATION</div>
-          <div class="info">${quote.quotation_number}</div>
-          <div class="info">Date: ${quote.quotation_date}</div>
-          ${quote.valid_until ? `<div class="info">Valid Until: ${quote.valid_until}</div>` : ''}
-          <div><span class="badge" style="background:${quote.status === 'Accepted' ? '#16a34a' : quote.status === 'Rejected' ? '#dc2626' : '#f59e0b'};color:#fff">${quote.status}</span></div>
-        </div>
-      </div>
-      <div style="margin-bottom:16px">
-        <div style="font-size:13px;color:#666">Bill To</div>
-        <div style="font-size:16px;font-weight:600">${quote.customer_name || 'N/A'}</div>
-      </div>
-      <table>
-        <tr><th>#</th><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Rate</th><th style="text-align:center">Tax</th><th style="text-align:right">Amount</th></tr>
-        ${items}
-      </table>
-      <div class="summary">
-        <div class="sum-row"><span>Subtotal</span><span>₹${quote.subtotal?.toFixed(2)}</span></div>
-        ${quote.discount_value > 0 ? `<div class="sum-row"><span>Discount</span><span>-₹${quote.discount_value?.toFixed(2)}</span></div>` : ''}
-        <div class="sum-row"><span>Tax</span><span>₹${quote.tax_amount?.toFixed(2)}</span></div>
-        <div class="sum-row total-row"><span>Total</span><span>₹${quote.total?.toFixed(2)}</span></div>
-      </div>
-      ${quote.notes ? `<div style="margin-top:20px;padding:12px;background:#f9fafb;border-radius:8px"><div style="font-size:12px;color:#666;margin-bottom:4px">Notes</div><div style="font-size:13px">${quote.notes}</div></div>` : ''}
-    </body></html>`;
+    return buildDocumentHTML({
+      doc: quote,
+      business,
+      customer,
+      settings,
+      baseUrl: BASE_URL,
+      assetDir: 'quotation',
+      isQuotation: true,
+    });
   };
 
   const handleDownloadPDF = async () => {
     try {
-      const { uri } = await Print.printToFileAsync({ html: generateHTML() });
+      const html = generateHTML();
+      if (!html) { Alert.alert('Error', 'Quotation not loaded yet'); return; }
+      console.log('[PDF-Q] template=', settings?.template, 'html length=', html.length);
+      const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: `Quotation ${quote.quotation_number}` });
-    } catch (e: any) { Alert.alert('Error', 'Failed to generate PDF'); }
+    } catch (e: any) {
+      console.log('[PDF-Q] error', e);
+      Alert.alert('Error', `Failed to generate PDF: ${e?.message || String(e)}`);
+    }
   };
 
   const handleShareWhatsApp = () => {

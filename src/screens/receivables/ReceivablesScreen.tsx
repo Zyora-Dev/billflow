@@ -52,9 +52,29 @@ export default function ReceivablesScreen({ navigation }: { navigation: any }) {
     return unsub;
   }, [navigation, fetchAll]);
 
-  const filtered = list.filter(c =>
-    !search || String(c.name || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = list
+    .filter(c =>
+      !search || String(c.name || '').toLowerCase().includes(search.toLowerCase().trim())
+    )
+    .slice()
+    .sort((a, b) =>
+      String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })
+    );
+
+  // Top suggestions for autocomplete (prefix match preferred)
+  const suggestions = search.trim().length > 0
+    ? [...filtered]
+        .sort((a, b) => {
+          const q = search.toLowerCase().trim();
+          const an = String(a.name || '').toLowerCase();
+          const bn = String(b.name || '').toLowerCase();
+          const ap = an.startsWith(q) ? 0 : 1;
+          const bp = bn.startsWith(q) ? 0 : 1;
+          if (ap !== bp) return ap - bp;
+          return Number(b.closing || 0) - Number(a.closing || 0);
+        })
+        .slice(0, 5)
+    : [];
 
   const top = list.slice(0, 1)[0];
   const totalCustomers = list.length;
@@ -82,37 +102,39 @@ export default function ReceivablesScreen({ navigation }: { navigation: any }) {
         }
         disabled={!item.id}
       >
-        <View style={styles.rowTop}>
+        <View style={styles.rowMain}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
               {String(item.name || 'U').trim().charAt(0).toUpperCase()}
             </Text>
           </View>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={styles.rowNameRow}>
               <Text style={styles.name} numberOfLines={1}>{item.name || 'Unknown'}</Text>
+              <View style={styles.rankPill}>
+                <Text style={styles.rankPillText}>#{index + 1}</Text>
+              </View>
               {item.tally_only && (
                 <View style={styles.tallyOnlyChip}>
                   <Text style={styles.tallyOnlyText}>Tally</Text>
                 </View>
               )}
             </View>
-            <Text style={styles.sub}>
-              Opening ₹{opening.toLocaleString('en-IN')} · {current >= 0 ? '+' : ''}₹{current.toLocaleString('en-IN')} this FY
-            </Text>
+            <View style={styles.rowMetaRow}>
+              <Text style={styles.metaPill}>Open ₹{opening.toLocaleString('en-IN')}</Text>
+              <View style={styles.metaDot} />
+              <Text style={[styles.metaPill, current >= 0 ? { color: '#dc2626' } : { color: '#059669' }]}>
+                {current >= 0 ? '+' : ''}₹{Math.abs(current).toLocaleString('en-IN')}
+              </Text>
+            </View>
           </View>
           <View style={{ alignItems: 'flex-end' }}>
             <CurrencyText amount={closing} style={styles.amt} />
-            <Text style={styles.amtSub}>closing</Text>
+            <Text style={styles.pctText}>{pct.toFixed(1)}%</Text>
           </View>
         </View>
         <View style={styles.barTrack}>
           <View style={[styles.barFill, { width: `${pct}%` }]} />
-        </View>
-        <View style={styles.rowFoot}>
-          <Text style={styles.rank}>#{index + 1}</Text>
-          <Text style={styles.pctText}>{pct.toFixed(1)}% of total</Text>
-          {item.id ? <Ionicons name="chevron-forward" size={14} color={colors.gray400} /> : null}
         </View>
       </TouchableOpacity>
     );
@@ -124,11 +146,15 @@ export default function ReceivablesScreen({ navigation }: { navigation: any }) {
       <View style={styles.hero}>
         <View style={styles.heroBgAccent} />
         <View style={styles.heroBgAccent2} />
-        <View style={styles.heroIconWrap}>
-          <Ionicons name="wallet" size={22} color="#10B981" />
+        <View style={styles.heroTopRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.heroEyebrow}>Total Receivables</Text>
+            <CurrencyText amount={overall} style={styles.heroValue} />
+          </View>
+          <View style={styles.heroIconWrap}>
+            <Ionicons name="wallet" size={20} color="#10B981" />
+          </View>
         </View>
-        <Text style={styles.heroLabel}>Total Receivables</Text>
-        <CurrencyText amount={overall} style={styles.heroValue} />
         <View style={styles.heroStatsRow}>
           <View style={styles.heroStatItem}>
             <Text style={styles.heroStatLabel}>Customers</Text>
@@ -150,25 +176,71 @@ export default function ReceivablesScreen({ navigation }: { navigation: any }) {
       </View>
 
       {/* Search */}
-      <View style={styles.searchRow}>
-        <Ionicons name="search" size={18} color={colors.gray400} />
-        <TextInput
-          style={styles.searchInput}
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search customer..."
-          placeholderTextColor={colors.placeholder}
-        />
-        {search ? (
-          <TouchableOpacity onPress={() => setSearch('')}>
-            <Ionicons name="close-circle" size={18} color={colors.gray400} />
-          </TouchableOpacity>
-        ) : null}
+      <View style={styles.searchWrap}>
+        <View style={styles.searchRow}>
+          <Ionicons name="search" size={17} color={colors.gray400} />
+          <TextInput
+            style={styles.searchInput}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Type a letter to search customer..."
+            placeholderTextColor={colors.placeholder}
+            autoCorrect={false}
+            autoCapitalize="words"
+          />
+          {search ? (
+            <>
+              <View style={styles.countChip}>
+                <Text style={styles.countChipText}>{filtered.length}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Ionicons name="close-circle" size={18} color={colors.gray400} />
+              </TouchableOpacity>
+            </>
+          ) : null}
+        </View>
+
+        {/* Live suggestions dropdown */}
+        {suggestions.length > 0 && search.trim().length > 0 && (
+          <View style={styles.suggestBox}>
+            {suggestions.map((s, i) => {
+              const closing = Number(s.closing || 0);
+              return (
+                <TouchableOpacity
+                  key={String(s.id || s.name) + i}
+                  style={[styles.suggestRow, i === suggestions.length - 1 && { borderBottomWidth: 0 }]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setSearch('');
+                    if (s.id) {
+                      navigation.navigate('CustomerLedger', {
+                        customer_id: s.id,
+                        customer_name: s.name,
+                        receivables_balance: closing,
+                        opening: Number(s.opening || 0),
+                        current: Number(s.current || 0),
+                      });
+                    }
+                  }}
+                >
+                  <View style={styles.suggestAvatar}>
+                    <Text style={styles.suggestAvatarText}>
+                      {String(s.name || 'U').trim().charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <Text style={styles.suggestName} numberOfLines={1}>{s.name || 'Unknown'}</Text>
+                  <CurrencyText amount={closing} style={styles.suggestAmt} />
+                  <Ionicons name="arrow-forward" size={14} color={colors.gray400} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
       </View>
 
       <View style={styles.listHeader}>
         <Text style={styles.listHeaderText}>Customer Breakdown</Text>
-        <Text style={styles.listHeaderText}>Outstanding</Text>
+        <Text style={styles.listHeaderText}>{filtered.length} {filtered.length === 1 ? 'customer' : 'customers'}</Text>
       </View>
     </View>
   );
@@ -207,77 +279,120 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f6f7fb' },
 
   hero: {
-    backgroundColor: '#10B981',
+    backgroundColor: colors.primary,
     marginHorizontal: spacing.md,
     marginTop: spacing.md,
-    borderRadius: 22,
-    padding: spacing.md + 4,
+    borderRadius: 20,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
     overflow: 'hidden',
-    shadowColor: '#10B981', shadowOpacity: 0.28, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 5,
+    shadowColor: colors.primary, shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4,
   },
-  heroBgAccent: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.08)', top: -70, right: -50 },
-  heroBgAccent2: { position: 'absolute', width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.05)', bottom: -40, left: -30 },
+  heroBgAccent: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.07)', top: -55, right: -35 },
+  heroBgAccent2: { position: 'absolute', width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(255,255,255,0.05)', bottom: -30, left: -20 },
+  heroTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   heroIconWrap: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: '#ffffff',
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.95)',
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: spacing.sm,
   },
-  heroLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
-  heroValue: { color: '#ffffff', fontSize: 32, fontWeight: '800', letterSpacing: -0.6, marginTop: 2 },
+  heroEyebrow: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
+  heroValue: { color: '#ffffff', fontSize: 22, fontWeight: '800', letterSpacing: -0.4, marginTop: 4 },
   heroStatsRow: {
     flexDirection: 'row', alignItems: 'center',
-    marginTop: spacing.md,
+    marginTop: spacing.sm + 2,
     paddingTop: spacing.sm,
     borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.18)',
   },
   heroStatItem: { flex: 1 },
-  heroStatLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
-  heroStatVal: { color: '#ffffff', fontSize: 14, fontWeight: '800', marginTop: 2 },
-  heroDivider: { width: 1, height: 24, backgroundColor: 'rgba(255,255,255,0.18)', marginHorizontal: spacing.sm },
+  heroStatLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 9.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  heroStatVal: { color: '#ffffff', fontSize: 13, fontWeight: '700', marginTop: 2 },
+  heroDivider: { width: 1, height: 22, backgroundColor: 'rgba(255,255,255,0.18)', marginHorizontal: spacing.sm },
 
+  // Search
+  searchWrap: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+  },
   searchRow: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.white,
-    marginHorizontal: spacing.md,
-    marginTop: spacing.md,
     borderRadius: 14,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    gap: 8,
-    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    gap: 10,
+    borderWidth: 1, borderColor: '#e6e9f2',
   },
-  searchInput: { flex: 1, fontSize: fontSize.md, color: colors.text, paddingVertical: 0 },
+  searchInput: { flex: 1, fontSize: 14, color: colors.text, paddingVertical: 0, fontWeight: '500' },
+  countChip: {
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 8, paddingVertical: 2,
+    borderRadius: 999,
+    minWidth: 24, alignItems: 'center',
+  },
+  countChipText: { fontSize: 11, color: '#059669', fontWeight: '800' },
 
-  listHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing.md + 4, paddingTop: spacing.md, paddingBottom: 6 },
-  listHeaderText: { fontSize: 10, color: colors.gray400, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
+  // Suggestions dropdown
+  suggestBox: {
+    marginTop: 6,
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    borderWidth: 1, borderColor: '#e6e9f2',
+    overflow: 'hidden',
+  },
+  suggestRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: '#f1f3f8',
+  },
+  suggestAvatar: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: '#dcfce7',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  suggestAvatarText: { fontSize: 12, fontWeight: '800', color: '#059669' },
+  suggestName: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.gray900 },
+  suggestAmt: { fontSize: 12.5, fontWeight: '800', color: '#dc2626' },
 
+  listHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing.md + 4, paddingTop: spacing.md + 4, paddingBottom: 8 },
+  listHeaderText: { fontSize: 10.5, color: colors.gray500, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
+
+  // Row
   row: {
     backgroundColor: colors.white,
     marginHorizontal: spacing.md,
     marginBottom: 10,
     borderRadius: 16,
-    padding: spacing.md,
-    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderWidth: 1, borderColor: '#eef0f5',
   },
-  rowTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: 10 },
+  rowMain: { flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 10 },
+  rowNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  rowMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  metaPill: {
+    fontSize: 10.5, color: colors.gray500, fontWeight: '600',
+  },
+  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.gray300 },
+  rankPill: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 6, paddingVertical: 1.5,
+    borderRadius: 999,
+  },
+  rankPillText: { fontSize: 9.5, fontWeight: '800', color: colors.gray600, letterSpacing: 0.3 },
   avatar: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: '#dcfce7',
     alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5, borderColor: '#86efac',
   },
   avatarText: { fontSize: 15, fontWeight: '800', color: '#059669' },
-  name: { fontSize: 14, fontWeight: '700', color: colors.text },
-  tallyOnlyChip: { paddingHorizontal: 6, paddingVertical: 2, backgroundColor: '#ede9fe', borderRadius: 4 },
+  name: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.gray900, letterSpacing: -0.2 },
+  tallyOnlyChip: { paddingHorizontal: 6, paddingVertical: 1.5, backgroundColor: '#ede9fe', borderRadius: 4 },
   tallyOnlyText: { fontSize: 9, fontWeight: '800', color: '#7c3aed', textTransform: 'uppercase', letterSpacing: 0.3 },
-  sub: { fontSize: 11, color: colors.gray500, marginTop: 2 },
-  amt: { fontSize: 16, fontWeight: '800', color: '#dc2626', letterSpacing: -0.3 },
-  amtSub: { fontSize: 10, color: colors.gray400, marginTop: 2, fontWeight: '600' },
+  amt: { fontSize: 14.5, fontWeight: '800', color: '#dc2626', letterSpacing: -0.3 },
+  pctText: { fontSize: 10, color: colors.gray400, marginTop: 2, fontWeight: '700' },
 
-  barTrack: { height: 6, backgroundColor: colors.gray100, borderRadius: 999, overflow: 'hidden' },
+  barTrack: { height: 5, backgroundColor: '#f1f3f8', borderRadius: 999, overflow: 'hidden' },
   barFill: { height: '100%', backgroundColor: '#10B981', borderRadius: 999 },
-
-  rowFoot: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  rank: { fontSize: 10, fontWeight: '800', color: colors.gray400, letterSpacing: 0.3 },
-  pctText: { flex: 1, fontSize: 11, color: colors.gray500, fontWeight: '600' },
 });

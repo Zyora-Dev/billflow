@@ -177,36 +177,41 @@ export default function PBListScreen({ navigation }: { navigation: any }) {
     }
   };
 
-  const renderItem = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      style={styles.card}
-      activeOpacity={0.85}
-      onPress={() => navigation.navigate('PBDetail', { id: item.id })}
-      onLongPress={() => preview.show({ type: 'bill', id: item.id })}
-      delayLongPress={350}
-    >
-      <View style={[styles.cardStrip, { backgroundColor: statusColor(item.status) }]} />
-      <View style={styles.cardBody}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.billNum}>{item.bill_number}</Text>
-          <Text style={styles.vendorName} numberOfLines={1}>{item.vendor_name || 'N/A'}</Text>
-          <View style={styles.cardMeta}>
-            <Ionicons name="calendar-outline" size={11} color={colors.gray500} />
-            <Text style={styles.date}>{item.bill_date}</Text>
-          </View>
+  const renderItem = ({ item }: { item: any }) => {
+    const initial = String(item.vendor_name || 'V').trim().charAt(0).toUpperCase();
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate('PBDetail', { id: item.id })}
+        onLongPress={() => preview.show({ type: 'bill', id: item.id })}
+        delayLongPress={350}
+      >
+        <View style={[styles.avatar, { backgroundColor: statusColor(item.status) + '20', borderColor: statusColor(item.status) + '50' }]}>
+          <Text style={[styles.avatarText, { color: statusColor(item.status) }]}>{initial}</Text>
         </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <CurrencyText amount={item.total} style={styles.total} />
-          {item.balance_due > 0 && (
+        <View style={{ flex: 1 }}>
+          <View style={styles.cardTopRow}>
+            <Text style={styles.vendorName} numberOfLines={1}>{item.vendor_name || 'Vendor'}</Text>
+            <CurrencyText amount={item.total} style={styles.total} />
+          </View>
+          <View style={styles.cardMetaRow}>
+            <Text style={styles.billNum}>{item.bill_number}</Text>
+            <View style={styles.metaDot} />
+            <Text style={styles.date}>{item.bill_date}</Text>
+            <View style={{ flex: 1 }} />
+            <StatusBadge status={item.status} />
+          </View>
+          {item.balance_due > 0 ? (
             <View style={styles.dueChip}>
+              <Ionicons name="alert-circle" size={10} color="#dc2626" />
               <Text style={styles.dueText}>Due ₹{Number(item.balance_due).toLocaleString('en-IN')}</Text>
             </View>
-          )}
-          <StatusBadge status={item.status} />
+          ) : null}
         </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   const Header = (
     <View>
@@ -218,16 +223,11 @@ export default function PBListScreen({ navigation }: { navigation: any }) {
             <Text style={styles.heroEyebrow}>Total Payables</Text>
             <CurrencyText amount={stats.payable} style={styles.heroValue} />
           </View>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            <TouchableOpacity style={styles.filterPill} activeOpacity={0.8} onPress={() => { setDraft(period); setPickerOpen(true); }}>
-              <Ionicons name="calendar" size={13} color="#ffffff" />
-              <Text style={styles.filterPillText}>{periodLabel(period)}</Text>
-              <Ionicons name="chevron-down" size={13} color="#ffffff" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconPill} activeOpacity={0.8} onPress={handleDownloadPDF} disabled={exporting}>
-              {exporting ? <ActivityIndicator size="small" color="#ffffff" /> : <Ionicons name="download-outline" size={15} color="#ffffff" />}
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity style={styles.filterPill} activeOpacity={0.8} onPress={() => { setDraft(period); setPickerOpen(true); }}>
+            <Ionicons name="calendar" size={13} color="#ffffff" />
+            <Text style={styles.filterPillText}>{periodLabel(period)}</Text>
+            <Ionicons name="chevron-down" size={13} color="#ffffff" />
+          </TouchableOpacity>
         </View>
         <View style={styles.heroStatsRow}>
           <View style={styles.heroStatItem}>
@@ -287,19 +287,27 @@ export default function PBListScreen({ navigation }: { navigation: any }) {
       </View>
 
       <View style={styles.searchRow}>
-        <Ionicons name="search" size={18} color={colors.gray400} />
+        <Ionicons name="search" size={18} color={colors.primary} />
         <TextInput
           style={styles.searchInput}
           value={search}
           onChangeText={setSearch}
-          placeholder="Search bill # or vendor..."
-          placeholderTextColor={colors.placeholder}
+          placeholder="Type to search bill # or vendor..."
+          placeholderTextColor={colors.gray400}
         />
         {search ? (
-          <TouchableOpacity onPress={() => setSearch('')}>
+          <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="close-circle" size={18} color={colors.gray400} />
           </TouchableOpacity>
         ) : null}
+        <View style={styles.searchDivider} />
+        <TouchableOpacity style={styles.searchActionBtn} activeOpacity={0.8} onPress={handleDownloadPDF} disabled={exporting}>
+          {exporting ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Ionicons name="download-outline" size={17} color={colors.primary} />
+          )}
+        </TouchableOpacity>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScroll}>
@@ -582,33 +590,33 @@ const styles = StyleSheet.create({
   hero: {
     backgroundColor: colors.primary,
     marginHorizontal: spacing.md, marginTop: spacing.md,
-    borderRadius: 22,
-    paddingHorizontal: spacing.md + 2, paddingVertical: spacing.md + 4,
+    borderRadius: 20,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     overflow: 'hidden',
-    shadowColor: colors.primary, shadowOpacity: 0.28, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 5,
+    shadowColor: colors.primary, shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4,
   },
-  heroBgAccent: { position: 'absolute', width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.06)', top: -60, right: -40 },
-  heroBgAccent2: { position: 'absolute', width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -30, left: -20 },
+  heroBgAccent: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.06)', top: -55, right: -35 },
+  heroBgAccent2: { position: 'absolute', width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -30, left: -20 },
   heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.sm },
-  heroEyebrow: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase' },
-  heroValue: { color: '#fff', fontSize: 28, fontWeight: '800', letterSpacing: -0.5, marginTop: 2 },
+  heroEyebrow: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  heroValue: { color: '#fff', fontSize: 22, fontWeight: '800', letterSpacing: -0.4, marginTop: 4 },
   filterPill: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 10, paddingVertical: 7,
+    paddingHorizontal: 10, paddingVertical: 6,
     backgroundColor: 'rgba(255,255,255,0.18)',
     borderRadius: 999,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
   },
-  filterPillText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  filterPillText: { color: '#fff', fontSize: 10.5, fontWeight: '700' },
   heroStatsRow: {
     flexDirection: 'row', alignItems: 'center',
-    marginTop: spacing.md, paddingTop: spacing.sm,
-    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.12)',
+    marginTop: spacing.sm + 2, paddingTop: spacing.sm,
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.18)',
   },
   heroStatItem: { flex: 1 },
-  heroStatLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3 },
-  heroStatVal: { color: '#fff', fontSize: 14, fontWeight: '800', marginTop: 2 },
-  heroDivider: { width: 1, height: 24, backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: spacing.sm },
+  heroStatLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 9.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  heroStatVal: { color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 2 },
+  heroDivider: { width: 1, height: 22, backgroundColor: 'rgba(255,255,255,0.18)', marginHorizontal: spacing.sm },
   iconPill: {
     width: 32, height: 32,
     alignItems: 'center', justifyContent: 'center',
@@ -617,13 +625,13 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
   },
 
-  stripRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: spacing.md, marginTop: spacing.sm + 2 },
+  stripRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: spacing.md, marginTop: spacing.md },
   overallStrip: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: colors.white,
     borderRadius: 999,
-    paddingVertical: 8, paddingHorizontal: 12,
-    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 3, elevation: 1,
+    paddingVertical: 10, paddingHorizontal: 12,
+    borderWidth: 1, borderColor: '#fee2e2',
   },
   overallStripIcon: {
     width: 24, height: 24, borderRadius: 12,
@@ -645,42 +653,63 @@ const styles = StyleSheet.create({
   searchRow: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.white,
-    marginHorizontal: spacing.md, marginTop: spacing.sm + 2,
+    marginHorizontal: spacing.md, marginTop: spacing.md,
     borderRadius: 14,
-    paddingHorizontal: spacing.md, paddingVertical: 10,
-    gap: 8,
-    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+    paddingHorizontal: 14, paddingVertical: 11,
+    gap: 10,
+    borderWidth: 1.5, borderColor: colors.primary + '30',
+    shadowColor: colors.primary, shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 2 },
   },
-  searchInput: { flex: 1, fontSize: fontSize.md, color: colors.text, paddingVertical: 0 },
+  searchInput: { flex: 1, fontSize: 14, color: colors.text, paddingVertical: 0, fontWeight: '500' },
+  searchDivider: { width: 1, height: 22, backgroundColor: colors.gray200 },
+  searchActionBtn: {
+    width: 32, height: 32, borderRadius: 10,
+    backgroundColor: colors.primary + '10',
+    alignItems: 'center', justifyContent: 'center',
+  },
 
-  chipsScroll: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2 },
+  chipsScroll: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4 },
   chip: {
     paddingHorizontal: spacing.md, paddingVertical: 6,
     borderRadius: borderRadius.full,
     backgroundColor: colors.white,
     marginRight: 6,
-    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 2, elevation: 1,
+    borderWidth: 1, borderColor: '#eef0f5',
   },
-  chipActive: { backgroundColor: colors.primary },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { fontSize: 12, color: colors.gray600, fontWeight: '600' },
   chipTextActive: { color: colors.white },
 
   card: {
-    flexDirection: 'row',
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.white,
     marginHorizontal: spacing.md, marginBottom: 10,
-    borderRadius: 14,
-    overflow: 'hidden',
-    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1,
+    borderRadius: 16,
+    paddingVertical: 12, paddingHorizontal: 12,
+    borderWidth: 1, borderColor: '#eef0f5',
   },
-  cardStrip: { width: 4 },
-  cardBody: { flex: 1, flexDirection: 'row', padding: spacing.md, gap: spacing.sm },
-  billNum: { fontSize: fontSize.md, fontWeight: '700', color: colors.text },
-  vendorName: { fontSize: 13, color: colors.gray700, marginTop: 2 },
-  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  date: { fontSize: 11, color: colors.gray500 },
-  total: { fontSize: 15, fontWeight: '800', color: colors.text, marginBottom: 4 },
-  dueChip: { backgroundColor: '#fee2e2', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginBottom: 6 },
+  avatar: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5,
+    marginRight: 11,
+  },
+  avatarText: { fontSize: 15, fontWeight: '800' },
+  cardTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  cardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' },
+  billNum: { fontSize: 11.5, fontWeight: '700', color: colors.primary },
+  vendorName: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.gray900, letterSpacing: -0.2 },
+  date: { fontSize: 11, color: colors.gray500, fontWeight: '500' },
+  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.gray300 },
+  total: { fontSize: 15, fontWeight: '800', color: colors.gray900, letterSpacing: -0.3 },
+  dueChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: '#fee2e2',
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 6,
+    marginTop: 6,
+  },
   dueText: { fontSize: 10, color: '#dc2626', fontWeight: '700' },
 
   pager: {

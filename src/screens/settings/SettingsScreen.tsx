@@ -188,6 +188,20 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
         </View>
       )}
 
+      {/* Document Templates */}
+      <TouchableOpacity style={s.card} onPress={() => navigation.navigate('Templates')} activeOpacity={0.7}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Ionicons name="document-text-outline" size={20} color={colors.primary} />
+            <View>
+              <Text style={s.cardTitle}>Document Templates</Text>
+              <Text style={{ fontSize: 12, color: colors.gray600, marginTop: 2 }}>Choose invoice & quotation styles</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.gray400} />
+        </View>
+      </TouchableOpacity>
+
       {/* About */}
       <View style={s.card}>
         <Text style={s.cardTitle}>About</Text>

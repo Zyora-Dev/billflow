@@ -355,27 +355,30 @@ export default function ExpenseListScreen({ navigation }: { navigation: any }) {
         onPress={() => openForm(item)}
         onLongPress={() => handleDelete(item)}
       >
-        <View style={[styles.cardStrip, { backgroundColor: m.color }]} />
-        <View style={[styles.iconBox, { backgroundColor: m.bg }]}>
-          <Ionicons name={m.icon} size={20} color={m.color} />
+        <View style={[styles.iconBox, { backgroundColor: m.bg, borderColor: m.color + '40' }]}>
+          <Ionicons name={m.icon} size={18} color={m.color} />
         </View>
         <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={styles.cardTopRow}>
             <Text style={styles.category} numberOfLines={1}>{item.category}</Text>
-            <Text style={styles.dot}>•</Text>
-            <Text style={styles.date}>{fmtDateShort(item.expense_date)}</Text>
+            <CurrencyText amount={item.amount} style={[styles.amount, { color: m.color }]} />
           </View>
-          {item.employee_name ? (
-            <View style={styles.empBadge}>
-              <Ionicons name="person" size={10} color="#7c3aed" />
-              <Text style={styles.empBadgeText}>{item.employee_name}</Text>
-            </View>
-          ) : null}
+          <View style={styles.cardMetaRow}>
+            <Text style={styles.date}>{fmtDateShort(item.expense_date)}</Text>
+            {item.employee_name ? (
+              <>
+                <View style={styles.metaDot} />
+                <View style={styles.empBadge}>
+                  <Ionicons name="person" size={9} color="#7c3aed" />
+                  <Text style={styles.empBadgeText} numberOfLines={1}>{item.employee_name}</Text>
+                </View>
+              </>
+            ) : null}
+          </View>
           {item.remarks ? (
             <Text style={styles.remarks} numberOfLines={1}>{item.remarks}</Text>
           ) : null}
         </View>
-        <CurrencyText amount={item.amount} style={styles.amount} />
       </TouchableOpacity>
     );
   };
@@ -392,16 +395,11 @@ export default function ExpenseListScreen({ navigation }: { navigation: any }) {
             <CurrencyText amount={stats.total} style={styles.heroValue} />
             <Text style={styles.heroSub}>{stats.count} entr{stats.count === 1 ? 'y' : 'ies'}</Text>
           </View>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            <TouchableOpacity style={styles.filterPill} activeOpacity={0.8} onPress={() => { setDraft(period); setPickerOpen(true); }}>
-              <Ionicons name="calendar" size={13} color="#fff" />
-              <Text style={styles.filterPillText}>{periodLabel(period)}</Text>
-              <Ionicons name="chevron-down" size={13} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconPill} activeOpacity={0.8} onPress={handleDownloadPDF} disabled={exporting}>
-              {exporting ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="download-outline" size={15} color="#fff" />}
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity style={styles.filterPill} activeOpacity={0.8} onPress={() => { setDraft(period); setPickerOpen(true); }}>
+            <Ionicons name="calendar" size={13} color="#fff" />
+            <Text style={styles.filterPillText}>{periodLabel(period)}</Text>
+            <Ionicons name="chevron-down" size={13} color="#fff" />
+          </TouchableOpacity>
         </View>
         <View style={styles.heroStatsRow}>
           <View style={styles.heroStatItem}>
@@ -453,19 +451,32 @@ export default function ExpenseListScreen({ navigation }: { navigation: any }) {
 
       {/* Search */}
       <View style={styles.searchRow}>
-        <Ionicons name="search" size={18} color={colors.gray400} />
+        <Ionicons name="search" size={18} color={colors.primary} />
         <TextInput
           style={styles.searchInput}
           value={search}
           onChangeText={setSearch}
-          placeholder="Search remarks or category..."
-          placeholderTextColor={colors.placeholder}
+          placeholder="Type to search remarks or category..."
+          placeholderTextColor={colors.gray400}
         />
+        {search.trim().length > 0 ? (
+          <View style={styles.countChip}>
+            <Text style={styles.countChipText}>{sorted.length}</Text>
+          </View>
+        ) : null}
         {search ? (
-          <TouchableOpacity onPress={() => setSearch('')}>
+          <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="close-circle" size={18} color={colors.gray400} />
           </TouchableOpacity>
         ) : null}
+        <View style={styles.searchDivider} />
+        <TouchableOpacity style={styles.searchActionBtn} activeOpacity={0.8} onPress={handleDownloadPDF} disabled={exporting}>
+          {exporting ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Ionicons name="download-outline" size={17} color={colors.primary} />
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* Category chips */}
@@ -802,26 +813,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     marginHorizontal: spacing.md,
     marginTop: spacing.md,
-    borderRadius: 22,
-    paddingHorizontal: spacing.md + 2,
-    paddingVertical: spacing.md + 4,
+    borderRadius: 20,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
     overflow: 'hidden',
-    shadowColor: colors.primary, shadowOpacity: 0.28, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 5,
+    shadowColor: colors.primary, shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4,
   },
-  heroBgAccent: { position: 'absolute', width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(220,38,38,0.18)', top: -60, right: -40 },
-  heroBgAccent2: { position: 'absolute', width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -30, left: -20 },
+  heroBgAccent: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.06)', top: -55, right: -35 },
+  heroBgAccent2: { position: 'absolute', width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -30, left: -20 },
   heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.sm },
-  heroEyebrow: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase' },
-  heroValue: { color: '#fff', fontSize: 28, fontWeight: '800', letterSpacing: -0.5, marginTop: 2 },
+  heroEyebrow: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  heroValue: { color: '#fff', fontSize: 22, fontWeight: '800', letterSpacing: -0.4, marginTop: 4 },
   heroSub: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '600', marginTop: 2 },
   filterPill: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 10, paddingVertical: 7,
+    paddingHorizontal: 10, paddingVertical: 6,
     backgroundColor: 'rgba(255,255,255,0.18)',
     borderRadius: 999,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
   },
-  filterPillText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  filterPillText: { color: '#fff', fontSize: 10.5, fontWeight: '700' },
   iconPill: {
     width: 32, height: 32, borderRadius: 999,
     alignItems: 'center', justifyContent: 'center',
@@ -830,21 +841,21 @@ const styles = StyleSheet.create({
   },
   heroStatsRow: {
     flexDirection: 'row', alignItems: 'center',
-    marginTop: spacing.md,
+    marginTop: spacing.sm + 2,
     paddingTop: spacing.sm,
-    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.12)',
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.18)',
   },
   heroStatItem: { flex: 1 },
-  heroStatLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3 },
-  heroStatVal: { color: '#fff', fontSize: 13, fontWeight: '800', marginTop: 2 },
+  heroStatLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 9.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  heroStatVal: { color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 2 },
   heroStatSub: { color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600', marginTop: 1 },
-  heroDivider: { width: 1, height: 32, backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: spacing.sm },
+  heroDivider: { width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.18)', marginHorizontal: spacing.sm },
 
   breakCard: {
     backgroundColor: '#fff',
-    marginHorizontal: spacing.md, marginTop: spacing.sm + 2,
+    marginHorizontal: spacing.md, marginTop: spacing.md,
     borderRadius: 16, padding: spacing.md,
-    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+    borderWidth: 1, borderColor: '#eef0f5',
   },
   breakHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   breakTitle: { fontSize: 11, color: colors.gray500, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
@@ -858,22 +869,36 @@ const styles = StyleSheet.create({
   searchRow: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff',
-    marginHorizontal: spacing.md, marginTop: spacing.sm + 2,
+    marginHorizontal: spacing.md, marginTop: spacing.md,
     borderRadius: 14,
-    paddingHorizontal: spacing.md, paddingVertical: 10,
-    gap: 8,
-    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+    paddingHorizontal: 14, paddingVertical: 11,
+    gap: 10,
+    borderWidth: 1.5, borderColor: colors.primary + '30',
+    shadowColor: colors.primary, shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 2 },
   },
-  searchInput: { flex: 1, fontSize: fontSize.md, color: colors.text, paddingVertical: 0 },
+  searchInput: { flex: 1, fontSize: 14, color: colors.text, paddingVertical: 0, fontWeight: '500' },
+  countChip: {
+    backgroundColor: colors.primary + '15',
+    paddingHorizontal: 8, paddingVertical: 2,
+    borderRadius: 999,
+    minWidth: 24, alignItems: 'center',
+  },
+  countChipText: { fontSize: 11, color: colors.primary, fontWeight: '800' },
+  searchDivider: { width: 1, height: 22, backgroundColor: colors.gray200 },
+  searchActionBtn: {
+    width: 32, height: 32, borderRadius: 10,
+    backgroundColor: colors.primary + '10',
+    alignItems: 'center', justifyContent: 'center',
+  },
 
-  chipsScroll: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2 },
+  chipsScroll: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4 },
   chip: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: 6,
     borderRadius: borderRadius.full,
     backgroundColor: colors.white,
     marginRight: 6,
-    borderWidth: 1, borderColor: colors.border,
+    borderWidth: 1, borderColor: '#eef0f5',
   },
   chipText: { fontSize: 12, color: colors.gray700, fontWeight: '700' },
   chipTextActive: { color: colors.white },
@@ -882,23 +907,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff',
     marginHorizontal: spacing.md, marginBottom: 10,
-    borderRadius: 14,
-    overflow: 'hidden',
-    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1,
+    borderRadius: 16,
+    paddingVertical: 12, paddingHorizontal: 12,
+    borderWidth: 1, borderColor: '#eef0f5',
   },
   cardStrip: { width: 4, alignSelf: 'stretch' },
   iconBox: {
     width: 42, height: 42, borderRadius: 21,
     alignItems: 'center', justifyContent: 'center',
-    marginLeft: spacing.md, marginRight: spacing.sm,
+    marginRight: 11,
+    borderWidth: 1.5,
   },
-  category: { fontSize: fontSize.md, fontWeight: '700', color: colors.text },
+  cardTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  cardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' },
+  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.gray300 },
+  category: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.gray900, letterSpacing: -0.2 },
   dot: { fontSize: 11, color: colors.gray400 },
   date: { fontSize: 11, color: colors.gray500, fontWeight: '600' },
-  remarks: { fontSize: 12, color: colors.gray600, marginTop: 2 },
+  remarks: { fontSize: 11.5, color: colors.gray600, marginTop: 4, fontWeight: '500' },
   amount: {
-    fontSize: 16, fontWeight: '800', color: colors.danger,
-    marginRight: spacing.md, letterSpacing: -0.3,
+    fontSize: 15.5, fontWeight: '800',
+    letterSpacing: -0.3,
   },
 
   fab: {
@@ -989,13 +1018,12 @@ const styles = StyleSheet.create({
 
   // Employee badge on cards + picker
   empBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    alignSelf: 'flex-start',
+    flexDirection: 'row', alignItems: 'center', gap: 3,
     backgroundColor: '#ede9fe',
     paddingHorizontal: 6, paddingVertical: 2,
-    borderRadius: 6, marginTop: 3,
+    borderRadius: 999,
   },
-  empBadgeText: { fontSize: 10, fontWeight: '700', color: '#7c3aed' },
+  empBadgeText: { fontSize: 10, fontWeight: '700', color: '#7c3aed', maxWidth: 120 },
   empPickerBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     borderWidth: 1, borderColor: '#c4b5fd',

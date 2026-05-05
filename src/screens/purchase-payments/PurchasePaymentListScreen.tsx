@@ -265,37 +265,42 @@ export default function PurchasePaymentListScreen({ navigation }: { navigation: 
 
   const onRefresh = () => { setRefreshing(true); fetchData(); };
 
-  const renderItem = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      style={s.card}
-      activeOpacity={0.85}
-      onPress={() => navigation.navigate('PurchasePaymentDetail', { id: item.id })}
-    >
-      <View style={s.iconBox}><Ionicons name="arrow-up-circle-outline" size={20} color={colors.danger} /></View>
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={s.vendName} numberOfLines={1}>{item.vendor_name || 'Vendor'}</Text>
-          <View style={s.methodChip}>
-            <Text style={s.methodChipText}>{item.payment_method || 'Cash'}</Text>
-          </View>
+  const renderItem = ({ item }: { item: any }) => {
+    const initial = String(item.vendor_name || 'V').trim().charAt(0).toUpperCase();
+    return (
+      <TouchableOpacity
+        style={s.card}
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate('PurchasePaymentDetail', { id: item.id })}
+      >
+        <View style={s.avatar}>
+          <Text style={s.avatarText}>{initial}</Text>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
-          <Ionicons name="calendar-outline" size={11} color={colors.gray500} />
-          <Text style={s.sub}>{fmtDateShort(item.payment_date)}</Text>
-          {item.bill_number ? (
-            <>
-              <Text style={s.dot}>•</Text>
-              <Text style={s.sub}>#{item.bill_number}</Text>
-            </>
+        <View style={{ flex: 1 }}>
+          <View style={s.cardTopRow}>
+            <Text style={s.vendName} numberOfLines={1}>{item.vendor_name || 'Vendor'}</Text>
+            <CurrencyText amount={item.amount} style={s.amount} />
+          </View>
+          <View style={s.cardMetaRow}>
+            <Text style={s.metaText}>{fmtDateShort(item.payment_date)}</Text>
+            {item.bill_number ? (
+              <>
+                <View style={s.metaDot} />
+                <Text style={s.metaText}>#{item.bill_number}</Text>
+              </>
+            ) : null}
+            <View style={s.metaDot} />
+            <View style={s.methodChip}>
+              <Text style={s.methodChipText}>{item.payment_method || 'Cash'}</Text>
+            </View>
+          </View>
+          {item.reference_number ? (
+            <Text style={s.ref} numberOfLines={1}>Ref: {item.reference_number}</Text>
           ) : null}
         </View>
-        {item.reference_number ? (
-          <Text style={s.ref} numberOfLines={1}>Ref: {item.reference_number}</Text>
-        ) : null}
-      </View>
-      <CurrencyText amount={item.amount} style={s.amount} />
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={s.container}>
@@ -341,43 +346,94 @@ export default function PurchasePaymentListScreen({ navigation }: { navigation: 
               </View>
             </View>
 
-            <View style={s.filterRow}>
-              <TouchableOpacity style={s.vendorPill} activeOpacity={0.85} onPress={() => setShowVendorPicker(true)}>
-                <Ionicons name="storefront-outline" size={14} color={colors.primary} />
-                <Text style={s.vendorPillText} numberOfLines={1}>{vendorName}</Text>
-                <Ionicons name="chevron-down" size={14} color={colors.primary} />
-              </TouchableOpacity>
-              {vendorId ? (
-                <TouchableOpacity style={s.actionPill} onPress={() => setVendorId(null)}>
-                  <Ionicons name="close" size={16} color={colors.gray600} />
+            <View style={s.searchSection}>
+              <View style={s.searchRow}>
+                <Ionicons name="search" size={18} color={colors.primary} />
+                <TextInput
+                  style={s.searchInput}
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Type a letter to search vendor..."
+                  placeholderTextColor={colors.gray400}
+                />
+                {search.trim().length > 0 ? (
+                  <View style={s.countChip}>
+                    <Text style={s.countChipText}>{filtered.length}</Text>
+                  </View>
+                ) : null}
+                {search ? (
+                  <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={18} color={colors.gray400} />
+                  </TouchableOpacity>
+                ) : null}
+                <View style={s.searchDivider} />
+                <TouchableOpacity style={s.searchActionBtn} activeOpacity={0.8} onPress={handleDownloadPDF} disabled={exporting}>
+                  {exporting ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Ionicons name="download-outline" size={17} color={colors.primary} />
+                  )}
                 </TouchableOpacity>
-              ) : null}
-              <TouchableOpacity style={s.actionPill} activeOpacity={0.85} onPress={handleDownloadPDF} disabled={exporting}>
-                {exporting ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Ionicons name="download-outline" size={16} color={colors.primary} />
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity style={s.actionPill} activeOpacity={0.85} onPress={handleShare} disabled={exporting}>
-                <Ionicons name="share-social-outline" size={16} color={colors.primary} />
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity style={s.searchActionBtn} activeOpacity={0.8} onPress={handleShare} disabled={exporting}>
+                  <Ionicons name="share-social-outline" size={17} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
 
-            <View style={s.searchRow}>
-              <Ionicons name="search" size={18} color={colors.gray400} />
-              <TextInput
-                style={s.searchInput}
-                value={search}
-                onChangeText={setSearch}
-                placeholder="Search ref, method, bill, notes..."
-                placeholderTextColor={colors.placeholder}
-              />
-              {search ? (
-                <TouchableOpacity onPress={() => setSearch('')}>
-                  <Ionicons name="close-circle" size={18} color={colors.gray400} />
-                </TouchableOpacity>
+              {vendorId ? (
+                <View style={s.activeFilterRow}>
+                  <View style={s.activeChip}>
+                    <Ionicons name="storefront" size={11} color={colors.primary} />
+                    <Text style={s.activeChipText} numberOfLines={1}>{vendorName}</Text>
+                    <TouchableOpacity onPress={() => setVendorId(null)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                      <Ionicons name="close" size={13} color={colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
               ) : null}
+
+              {search.trim().length > 0 && !vendorId ? (() => {
+                const q = search.toLowerCase().trim();
+                const suggestions = vendors
+                  .filter(v => {
+                    const n = `${v.business_name || ''} ${v.contact_person || ''}`.toLowerCase();
+                    return n.includes(q);
+                  })
+                  .sort((a, b) => {
+                    const an = String(a.business_name || a.contact_person || '').toLowerCase();
+                    const bn = String(b.business_name || b.contact_person || '').toLowerCase();
+                    const ap = an.startsWith(q) ? 0 : 1;
+                    const bp = bn.startsWith(q) ? 0 : 1;
+                    if (ap !== bp) return ap - bp;
+                    return an.localeCompare(bn);
+                  })
+                  .slice(0, 5);
+                if (!suggestions.length) return null;
+                return (
+                  <View style={s.suggestBox}>
+                    {suggestions.map((v, idx) => {
+                      const nm = v.business_name || v.contact_person || 'Vendor';
+                      const initial = String(nm).trim().charAt(0).toUpperCase();
+                      return (
+                        <TouchableOpacity
+                          key={v.id}
+                          style={[s.suggestRow, idx === suggestions.length - 1 && { borderBottomWidth: 0 }]}
+                          activeOpacity={0.7}
+                          onPress={() => { setVendorId(v.id); setSearch(''); }}
+                        >
+                          <View style={s.suggestAvatar}><Text style={s.suggestAvatarText}>{initial}</Text></View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={s.suggestName} numberOfLines={1}>{nm}</Text>
+                            {v.contact_person && v.business_name ? (
+                              <Text style={s.suggestSub} numberOfLines={1}>{v.contact_person}</Text>
+                            ) : null}
+                          </View>
+                          <Ionicons name="chevron-forward" size={16} color={colors.gray400} />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                );
+              })() : null}
             </View>
           </>
         }
@@ -525,80 +581,119 @@ const s = StyleSheet.create({
     backgroundColor: colors.primary,
     marginHorizontal: spacing.md,
     marginTop: spacing.md,
-    borderRadius: 22,
-    paddingHorizontal: spacing.md + 2,
-    paddingVertical: spacing.md + 4,
+    borderRadius: 20,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
     overflow: 'hidden',
-    shadowColor: colors.primary, shadowOpacity: 0.28, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 5,
+    shadowColor: colors.primary, shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4,
   },
-  heroBgAccent: { position: 'absolute', width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(220,38,38,0.18)', top: -60, right: -40 },
-  heroBgAccent2: { position: 'absolute', width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -30, left: -20 },
+  heroBgAccent: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.06)', top: -55, right: -35 },
+  heroBgAccent2: { position: 'absolute', width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(255,255,255,0.04)', bottom: -30, left: -20 },
   heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.sm },
-  heroEyebrow: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase' },
-  heroValue: { color: '#fff', fontSize: 28, fontWeight: '800', letterSpacing: -0.5, marginTop: 2 },
+  heroEyebrow: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  heroValue: { color: '#fff', fontSize: 22, fontWeight: '800', letterSpacing: -0.4, marginTop: 4 },
   heroSub: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '600', marginTop: 2 },
   filterPill: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 10, paddingVertical: 7,
+    paddingHorizontal: 10, paddingVertical: 6,
     backgroundColor: 'rgba(255,255,255,0.18)',
     borderRadius: 999,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
   },
-  filterPillText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  filterPillText: { color: '#fff', fontSize: 10.5, fontWeight: '700' },
   heroStatsRow: {
     flexDirection: 'row', alignItems: 'center',
-    marginTop: spacing.md,
+    marginTop: spacing.sm + 2,
     paddingTop: spacing.sm,
-    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.12)',
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.18)',
   },
   heroStatItem: { flex: 1 },
-  heroStatLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3 },
-  heroStatVal: { color: '#fff', fontSize: 14, fontWeight: '800', marginTop: 2 },
-  heroDivider: { width: 1, height: 24, backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: spacing.sm },
+  heroStatLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 9.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  heroStatVal: { color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 2 },
+  heroDivider: { width: 1, height: 22, backgroundColor: 'rgba(255,255,255,0.18)', marginHorizontal: spacing.sm },
 
-  filterRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: spacing.md, marginTop: spacing.sm + 2 },
-  vendorPill: {
-    flex: 1,
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 9,
-    backgroundColor: '#fff',
-    borderRadius: 999,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  vendorPillText: { flex: 1, fontSize: 12, fontWeight: '700', color: colors.text },
-  actionPill: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: '#fff',
-    borderWidth: 1, borderColor: colors.border,
-    alignItems: 'center', justifyContent: 'center',
-  },
-
+  // Highlighted Vendor Search Section
+  searchSection: { marginHorizontal: spacing.md, marginTop: spacing.md, marginBottom: spacing.md },
   searchRow: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff',
-    marginHorizontal: spacing.md, marginTop: spacing.sm + 2, marginBottom: spacing.sm,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2,
-    borderWidth: 1, borderColor: colors.border,
+    borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 11,
+    gap: 10,
+    borderWidth: 1.5, borderColor: colors.primary + '30',
+    shadowColor: colors.primary, shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 2 },
   },
-  searchInput: { flex: 1, marginLeft: spacing.sm, fontSize: fontSize.md, color: colors.text, paddingVertical: 4 },
+  searchInput: { flex: 1, fontSize: 14, color: colors.text, paddingVertical: 0, fontWeight: '500' },
+  countChip: {
+    backgroundColor: colors.primary + '15',
+    paddingHorizontal: 8, paddingVertical: 2,
+    borderRadius: 999,
+    minWidth: 24, alignItems: 'center',
+  },
+  countChipText: { fontSize: 11, color: colors.primary, fontWeight: '800' },
+  searchDivider: { width: 1, height: 22, backgroundColor: colors.gray200 },
+  searchActionBtn: {
+    width: 32, height: 32, borderRadius: 10,
+    backgroundColor: colors.primary + '10',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  activeFilterRow: { flexDirection: 'row', marginTop: 8 },
+  activeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6,
+    backgroundColor: colors.primary + '10',
+    borderRadius: 999,
+    borderWidth: 1, borderColor: colors.primary + '25',
+  },
+  activeChipText: { fontSize: 11.5, fontWeight: '700', color: colors.primary, maxWidth: 200 },
+  suggestBox: {
+    marginTop: 6,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1, borderColor: '#e6e9f2',
+    overflow: 'hidden',
+  },
+  suggestRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: '#f1f3f8',
+  },
+  suggestAvatar: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: colors.primary + '15',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  suggestAvatarText: { fontSize: 12, fontWeight: '800', color: colors.primary },
+  suggestName: { fontSize: 13, fontWeight: '700', color: colors.gray900 },
+  suggestSub: { fontSize: 10.5, fontWeight: '500', color: colors.gray500, marginTop: 1 },
 
   card: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff',
-    marginHorizontal: spacing.md, marginBottom: spacing.sm,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+    marginHorizontal: spacing.md, marginBottom: 10,
+    borderRadius: 16,
+    paddingVertical: 12, paddingHorizontal: 12,
+    borderWidth: 1, borderColor: '#eef0f5',
   },
-  iconBox: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.danger + '15', justifyContent: 'center', alignItems: 'center', marginRight: spacing.md },
-  vendName: { fontSize: fontSize.md, fontWeight: '700', color: colors.text, flexShrink: 1 },
-  methodChip: { paddingHorizontal: 6, paddingVertical: 2, backgroundColor: colors.primary + '12', borderRadius: 4 },
+  avatar: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: colors.primary + '12',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5, borderColor: colors.primary + '30',
+    marginRight: 11,
+  },
+  avatarText: { fontSize: 15, fontWeight: '800', color: colors.primary },
+  cardTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  cardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' },
+  metaText: { fontSize: 11, color: colors.gray500, fontWeight: '600' },
+  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.gray300 },
+  vendName: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.gray900, letterSpacing: -0.2 },
+  methodChip: { paddingHorizontal: 6, paddingVertical: 1.5, backgroundColor: colors.primary + '12', borderRadius: 4 },
   methodChipText: { fontSize: 9, fontWeight: '800', color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.3 },
   sub: { fontSize: 11, color: colors.gray500 },
   dot: { fontSize: 11, color: colors.gray400 },
-  ref: { fontSize: 11, color: colors.gray500, marginTop: 2 },
-  amount: { fontSize: 16, fontWeight: '800', color: colors.danger, letterSpacing: -0.3 },
+  ref: { fontSize: 10.5, color: colors.gray500, marginTop: 4, fontWeight: '500' },
+  amount: { fontSize: 15.5, fontWeight: '800', color: colors.danger, letterSpacing: -0.3 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalSheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: spacing.lg, paddingBottom: 32, maxHeight: '85%' },

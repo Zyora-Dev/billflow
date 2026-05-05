@@ -39,8 +39,10 @@ import EmployeeFormScreen from '../screens/employees/EmployeeFormScreen';
 import PaymentListScreen from '../screens/payments/PaymentListScreen';
 import PaymentDetailScreen from '../screens/payments/PaymentDetailScreen';
 import ReportsScreen from '../screens/reports/ReportsScreen';
+import ReportDetailScreen from '../screens/reports/ReportDetailScreen';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
+import TemplatesScreen from '../screens/settings/TemplatesScreen';
 import PayrollScreen from '../screens/payroll/PayrollScreen';
 import TaskListScreen from '../screens/tasks/TaskListScreen';
 import TaskDetailScreen from '../screens/tasks/TaskDetailScreen';
@@ -52,12 +54,16 @@ import PayablesScreen from '../screens/payables/PayablesScreen';
 import VendorLedgerScreen from '../screens/payables/VendorLedgerScreen';
 import BusinessListScreen from '../screens/business/BusinessListScreen';
 import GSTScreen from '../screens/gst/GSTScreen';
+import EwayBillListScreen from '../screens/eway-bills/EwayBillListScreen';
+import EwayBillDetailScreen from '../screens/eway-bills/EwayBillDetailScreen';
+import EwayBillFormScreen from '../screens/eway-bills/EwayBillFormScreen';
 import ReceivablesScreen from '../screens/receivables/ReceivablesScreen';
 import CustomerLedgerScreen from '../screens/receivables/CustomerLedgerScreen';
 import CustomTabBar from './CustomTabBar';
 import { QuickAddProvider } from '../components/QuickAddFAB';
 import { GlobalSearchProvider, useGlobalSearch } from '../components/GlobalSearch';
 import { PreviewProvider } from '../components/Preview';
+import AppHeader from '../components/AppHeader';
 
 // Drawer context
 const DrawerContext = createContext<{ open: () => void; close: () => void }>({ open: () => {}, close: () => {} });
@@ -71,10 +77,13 @@ export const useStealthPrompt = () => useContext(StealthPromptContext);
 function NotificationBell() {
   const navigation = useNavigation<any>();
   const [count, setCount] = useState(0);
+  const fetchCount = async () => { try { const b = await api.get('/api/business'); const o = b.data[0]?.org_id; if (o) { const r = await api.get(`/api/notifications/count?org_id=${o}`); setCount(r.data.total || 0); } } catch {} };
   useEffect(() => {
-    const f = async () => { try { const b = await api.get('/api/business'); const o = b.data[0]?.org_id; if (o) { const r = await api.get(`/api/notifications/count?org_id=${o}`); setCount(r.data.total || 0); } } catch {} };
-    f(); const i = setInterval(f, 60000); return () => clearInterval(i);
-  }, []);
+    fetchCount();
+    const i = setInterval(fetchCount, 60000);
+    const unsub = navigation.addListener('state', fetchCount);
+    return () => { clearInterval(i); unsub(); };
+  }, [navigation]);
   return (
     <TouchableOpacity style={bellS.container} onPress={() => navigation.navigate('Notifications')}>
       <Ionicons name="notifications-outline" size={24} color={colors.white} />
@@ -179,20 +188,65 @@ const rootOpts = {
   headerTitle: ({ children, tintColor }: any) => <BrandTitle tintColor={tintColor}>{children}</BrandTitle>,
 };
 
+// Modern custom header used by every native-stack navigator
+function ScreenHeader({ navigation, route, options, back }: any) {
+  const { open: openDrawer } = useDrawer();
+  const { open: openSearch } = useGlobalSearch();
+  const { prompt } = useStealthPrompt();
+  const [notifCount, setNotifCount] = useState(0);
+
+  useEffect(() => {
+    const f = async () => {
+      try {
+        const b = await api.get('/api/business');
+        const o = b.data[0]?.org_id;
+        if (o) {
+          const r = await api.get(`/api/notifications/count?org_id=${o}`);
+          setNotifCount(r.data.total || 0);
+        }
+      } catch {}
+    };
+    f();
+    const i = setInterval(f, 60000);
+    const unsub = navigation.addListener('focus', f);
+    return () => { clearInterval(i); unsub(); };
+  }, [navigation]);
+
+  const title = options.title ?? route.name;
+  const subtitle = options.headerSubtitle;
+  const isRoot = !back;
+
+  return (
+    <AppHeader
+      title={title}
+      subtitle={subtitle}
+      showMenu={isRoot}
+      onMenu={isRoot ? openDrawer : undefined}
+      onBack={back ? () => navigation.goBack() : undefined}
+      onSearch={openSearch}
+      onBell={() => navigation.navigate('Notifications')}
+      onTitleTriplePress={prompt}
+      notificationCount={notifCount}
+    />
+  );
+}
+
+const navHeader = { header: (props: any) => <ScreenHeader {...props} /> } as any;
+
 // All stacks
 const Stack = createNativeStackNavigator();
 
 function DashboardStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="DashboardHome" component={DashboardScreen} options={{ title: 'BillFlow', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="DashboardHome" component={DashboardScreen} options={{ title: 'BillFlow' }} />
     <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ title: 'Setup Business' }} />
     <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
   </Stack.Navigator>);
 }
 
 function InvoiceStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="InvoiceList" component={InvoiceListScreen} options={{ title: 'Invoices', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="InvoiceList" component={InvoiceListScreen} options={{ title: 'Invoices' }} />
     <Stack.Screen name="InvoiceDetail" component={InvoiceDetailScreen} options={{ title: 'Invoice' }} />
     <Stack.Screen name="InvoiceForm" component={InvoiceFormScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Edit Invoice' : 'New Invoice' })} />
     <Stack.Screen name="Receivables" component={ReceivablesScreen} options={{ title: 'Total Receivables' }} />
@@ -201,53 +255,53 @@ function InvoiceStack() {
 }
 
 function CustomerStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="CustomerList" component={CustomerListScreen} options={{ title: 'Customers', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="CustomerList" component={CustomerListScreen} options={{ title: 'Customers' }} />
     <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} options={{ title: 'Customer' }} />
     <Stack.Screen name="CustomerForm" component={CustomerFormScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Edit Customer' : 'New Customer' })} />
   </Stack.Navigator>);
 }
 
 function ExpenseStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="ExpenseList" component={ExpenseListScreen} options={{ title: 'Expenses', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="ExpenseList" component={ExpenseListScreen} options={{ title: 'Expenses' }} />
   </Stack.Navigator>);
 }
 
 function ItemStackNav() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="ItemList" component={ItemListScreen} options={{ title: 'Items', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="ItemList" component={ItemListScreen} options={{ title: 'Items' }} />
     <Stack.Screen name="ItemForm" component={ItemFormScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Edit Item' : 'New Item' })} />
   </Stack.Navigator>);
 }
 
 function QuotationStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="QuotationList" component={QuotationListScreen} options={{ title: 'Quotations', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="QuotationList" component={QuotationListScreen} options={{ title: 'Quotations' }} />
     <Stack.Screen name="QuotationDetail" component={QuotationDetailScreen} options={{ title: 'Quotation' }} />
     <Stack.Screen name="QuotationForm" component={QuotationFormScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Edit Quotation' : 'New Quotation' })} />
   </Stack.Navigator>);
 }
 
 function VendorStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="VendorList" component={VendorListScreen} options={{ title: 'Vendors', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="VendorList" component={VendorListScreen} options={{ title: 'Vendors' }} />
     <Stack.Screen name="VendorDetail" component={VendorDetailScreen} options={{ title: 'Vendor' }} />
     <Stack.Screen name="VendorForm" component={VendorFormScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Edit Vendor' : 'New Vendor' })} />
   </Stack.Navigator>);
 }
 
 function POStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="POList" component={POListScreen} options={{ title: 'Purchase Orders', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="POList" component={POListScreen} options={{ title: 'Purchase Orders' }} />
     <Stack.Screen name="PODetail" component={PODetailScreen} options={{ title: 'Purchase Order' }} />
     <Stack.Screen name="POForm" component={POFormScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Edit PO' : 'New PO' })} />
   </Stack.Navigator>);
 }
 
 function PBStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="PBList" component={PBListScreen} options={{ title: 'Purchase Bills', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="PBList" component={PBListScreen} options={{ title: 'Purchase Bills' }} />
     <Stack.Screen name="PBDetail" component={PBDetailScreen} options={{ title: 'Purchase Bill' }} />
     <Stack.Screen name="PBForm" component={PBFormScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Edit Bill' : 'New Bill' })} />
     <Stack.Screen name="Payables" component={PayablesScreen} options={{ title: 'Total Payables' }} />
@@ -256,16 +310,16 @@ function PBStack() {
 }
 
 function EmployeeStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="EmployeeList" component={EmployeeListScreen} options={{ title: 'Employees', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="EmployeeList" component={EmployeeListScreen} options={{ title: 'Employees' }} />
     <Stack.Screen name="EmployeeDetail" component={EmployeeDetailScreen} options={{ title: 'Employee' }} />
     <Stack.Screen name="EmployeeForm" component={EmployeeFormScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Edit Employee' : 'New Employee' })} />
   </Stack.Navigator>);
 }
 
 function PayrollStackNav() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="PayrollHome" component={PayrollScreen} options={{ title: 'Payroll', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="PayrollHome" component={PayrollScreen} options={{ title: 'Payroll' }} />
   </Stack.Navigator>);
 }
 
@@ -283,8 +337,8 @@ function TaskBackButton() {
 }
 
 function TaskStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="TaskList" component={TaskListScreen} options={{ title: 'Tasks & Orders', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="TaskList" component={TaskListScreen} options={{ title: 'Tasks & Orders' }} />
     <Stack.Screen
       name="TaskDetail"
       component={TaskDetailScreen}
@@ -307,53 +361,63 @@ function TaskStack() {
 }
 
 function InventoryStackNav() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="InventoryHome" component={InventoryScreen} options={{ title: 'Inventory', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="InventoryHome" component={InventoryScreen} options={{ title: 'Inventory' }} />
   </Stack.Navigator>);
 }
 
 function PurchasePaymentStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="PurchasePaymentList" component={PurchasePaymentListScreen} options={{ title: 'Purchase Payments', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="PurchasePaymentList" component={PurchasePaymentListScreen} options={{ title: 'Purchase Payments' }} />
     <Stack.Screen name="PurchasePaymentDetail" component={PurchasePaymentDetailScreen} options={{ title: 'Payment Voucher' }} />
   </Stack.Navigator>);
 }
 
 function BusinessStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="BusinessList" component={BusinessListScreen} options={{ title: 'Businesses', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="BusinessList" component={BusinessListScreen} options={{ title: 'Businesses' }} />
     <Stack.Screen name="Onboarding" component={OnboardingScreen} options={({ route }: any) => ({ title: route.params?.editId ? 'Edit Business' : 'Add Business' })} />
   </Stack.Navigator>);
 }
 
 function GSTStackNav() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="GSTHome" component={GSTScreen} options={{ title: 'GST Returns', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="GSTHome" component={GSTScreen} options={{ title: 'GST Returns' }} />
+  </Stack.Navigator>);
+}
+
+function EwayBillStack() {
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="EwayBillList" component={EwayBillListScreen} options={{ title: 'E-Way Bills' }} />
+    <Stack.Screen name="EwayBillDetail" component={EwayBillDetailScreen} options={{ title: 'E-Way Bill' }} />
+    <Stack.Screen name="EwayBillForm" component={EwayBillFormScreen} options={{ title: 'E-Way Bill' }} />
   </Stack.Navigator>);
 }
 
 function PaymentStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="PaymentList" component={PaymentListScreen} options={{ title: 'Payments', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="PaymentList" component={PaymentListScreen} options={{ title: 'Payments' }} />
     <Stack.Screen name="PaymentDetail" component={PaymentDetailScreen} options={{ title: 'Receipt' }} />
   </Stack.Navigator>);
 }
 
 function ReportsStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="ReportsHome" component={ReportsScreen} options={{ title: 'Reports', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="ReportsHome" component={ReportsScreen} options={{ title: 'Reports' }} />
+    <Stack.Screen name="ReportDetail" component={ReportDetailScreen} options={{ title: 'Report' }} />
   </Stack.Navigator>);
 }
 
 function SettingsStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="SettingsHome" component={SettingsScreen} options={{ title: 'Settings', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="SettingsHome" component={SettingsScreen} options={{ title: 'Settings' }} />
+    <Stack.Screen name="Templates" component={TemplatesScreen} options={{ title: 'Document Templates' }} />
   </Stack.Navigator>);
 }
 
 function NotificationsStack() {
-  return (<Stack.Navigator screenOptions={hOpts}>
-    <Stack.Screen name="NotificationsHome" component={NotificationsScreen} options={{ title: 'Notifications', ...rootOpts }} />
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="NotificationsHome" component={NotificationsScreen} options={{ title: 'Notifications' }} />
   </Stack.Navigator>);
 }
 
@@ -430,6 +494,7 @@ function BottomTabs() {
       <Tab.Screen name="PurchasePayments" component={PurchasePaymentStack} options={{ tabBarItemStyle: { display: 'none' } }} />
       <Tab.Screen name="Business" component={BusinessStack} options={{ tabBarItemStyle: { display: 'none' } }} />
       <Tab.Screen name="GST" component={GSTStackNav} options={{ tabBarItemStyle: { display: 'none' } }} />
+      <Tab.Screen name="EwayBills" component={EwayBillStack} options={{ tabBarItemStyle: { display: 'none' } }} />
     </Tab.Navigator>
     </PreviewProvider>
     </GlobalSearchProvider>
@@ -497,6 +562,7 @@ const drawerGroups: DrawerGroup[] = [
     items: [
       { label: 'Reports', icon: 'bar-chart-outline', tab: 'Reports' },
       { label: 'GST Returns', icon: 'calculator-outline', tab: 'GST' },
+      { label: 'E-Way Bills', icon: 'car-outline', tab: 'EwayBills' },
     ],
   },
   {

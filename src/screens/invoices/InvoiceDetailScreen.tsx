@@ -8,34 +8,9 @@ import { useToast } from '../../components/Toast';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import StatusBadge from '../../components/StatusBadge';
 import CurrencyText from '../../components/CurrencyText';
+import { buildDocumentHTML } from '../../lib/document-templates';
 
 const STATUS_OPTIONS = ['Draft', 'Sent', 'Paid', 'Partially Paid', 'Overdue', 'Cancelled'];
-
-function numberToWordsINR(num: number): string {
-  if (!num || num === 0) return 'Rupees Zero Only';
-  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
-    'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  const below1000 = (n: number): string => {
-    if (n === 0) return '';
-    if (n < 20) return ones[n];
-    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
-    return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' and ' + below1000(n % 100) : '');
-  };
-  const crore = Math.floor(num / 10000000);
-  const lakh = Math.floor((num % 10000000) / 100000);
-  const thousand = Math.floor((num % 100000) / 1000);
-  const rest = Math.floor(num % 1000);
-  const paise = Math.round((num - Math.floor(num)) * 100);
-  let words = '';
-  if (crore) words += below1000(crore) + ' Crore ';
-  if (lakh) words += below1000(lakh) + ' Lakh ';
-  if (thousand) words += below1000(thousand) + ' Thousand ';
-  if (rest) words += below1000(rest);
-  words = 'Rupees ' + words.trim();
-  if (paise) words += ' and ' + below1000(paise) + ' Paise';
-  return words + ' Only';
-}
 
 export default function InvoiceDetailScreen({ route, navigation }: { route: any; navigation: any }) {
   const toast = useToast();
@@ -140,203 +115,28 @@ export default function InvoiceDetailScreen({ route, navigation }: { route: any;
 
   const generateHTML = () => {
     if (!invoice) return '';
-    const fmt = (n: number) => (n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
-    const halfTax = (invoice.tax_amount || 0) / 2;
-    const discAmt = invoice.discount_type === 'percentage'
-      ? (invoice.subtotal || 0) * ((invoice.discount_value || 0) / 100)
-      : (invoice.discount_value || 0);
-    const logoUrl = settings?.header_logo
-      ? `${BASE_URL}/assets/invoice/${settings.header_logo}`
-      : business?.business_logo ? `${BASE_URL}/assets/logos/${business.business_logo}` : '';
-    const fontFamily = settings?.font_family || 'Inter';
-    const baseSize = settings?.font_size === 'small' ? 11 : settings?.font_size === 'large' ? 14 : 12;
-    const statusColor: Record<string, string> = {
-      Paid: '#16a34a', Sent: '#2563eb', Draft: '#71717a', Overdue: '#dc2626',
-      'Partially Paid': '#f59e0b', Cancelled: '#dc2626',
-    };
-    const sColor = statusColor[invoice.status] || '#71717a';
-
-    const items = (invoice.items || []).map((it: any, i: number) => `
-      <tr>
-        <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;color:#71717a">${i + 1}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;font-weight:500">${it.item_name || ''}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;color:#71717a">${it.description || '—'}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;font-family:monospace;font-size:11px">${it.hsn_code || '—'}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;text-align:right">${it.qty} ${it.unit || ''}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;text-align:right">₹${fmt(it.rate)}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;text-align:right">${it.discount_percent || 0}%</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;text-align:right">${it.tax_rate || 0}%</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:500">₹${fmt(it.amount)}</td>
-      </tr>`).join('');
-
-    const paymentRows = payments.map((p: any) => `
-      <tr>
-        <td style="padding:6px 0;border-bottom:1px dashed #e4e4e7">${fmtDate(p.payment_date)}</td>
-        <td style="padding:6px 0;border-bottom:1px dashed #e4e4e7;text-align:right;color:#16a34a;font-weight:500">₹${fmt(p.amount)}</td>
-        <td style="padding:6px 0 6px 16px;border-bottom:1px dashed #e4e4e7">${p.payment_method || ''}</td>
-        <td style="padding:6px 0 6px 16px;border-bottom:1px dashed #e4e4e7;color:#71717a">${p.reference_number || '—'}</td>
-      </tr>`).join('');
-
-    return `<!DOCTYPE html><html><head><meta charset="utf-8">
-    <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontFamily)}:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-      *{box-sizing:border-box}
-      body{font-family:'${fontFamily}',system-ui,sans-serif;margin:0;padding:24px;color:#18181b;font-size:${baseSize}px;line-height:1.5}
-      .doc{max-width:780px;margin:0 auto}
-      .row{display:flex;justify-content:space-between;align-items:flex-start;gap:24px}
-      .biz-head{display:flex;align-items:center;gap:14px}
-      .biz-head img{height:54px;width:54px;object-fit:contain;border:1px solid #e4e4e7;border-radius:8px}
-      .biz-name{font-size:16px;font-weight:700;margin:0}
-      .muted{color:#71717a;font-size:11px;margin:1px 0}
-      .doc-title{font-size:22px;font-weight:700;color:#27272a;letter-spacing:1.5px;text-transform:uppercase;margin:0}
-      .badge{display:inline-block;margin-top:6px;padding:3px 10px;border-radius:10px;font-size:10px;font-weight:600;color:#fff;background:${sColor}}
-      .sep{height:1px;background:#e4e4e7;margin:18px 0}
-      .grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
-      .label{font-size:10px;font-weight:600;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px}
-      .info-card{display:inline-block;background:#fafafa;border:1px solid #e4e4e7;border-radius:8px;padding:10px 14px;text-align:left}
-      .info-card p{margin:2px 0;font-size:11px}
-      table.items{width:100%;border-collapse:separate;border-spacing:0;font-size:11px;margin-top:6px}
-      table.items thead th{background:#18181b;color:#fff;padding:9px 12px;text-align:left;font-weight:500;font-size:11px}
-      table.items thead th:first-child{border-top-left-radius:8px}
-      table.items thead th:last-child{border-top-right-radius:8px}
-      .sum-wrap{display:flex;justify-content:flex-end;margin-top:18px}
-      .summary{width:300px}
-      .sum-row{display:flex;justify-content:space-between;font-size:11px;padding:3px 0}
-      .sum-row .lbl{color:#71717a}
-      .sum-total{display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding-top:8px;margin-top:6px;border-top:1px solid #e4e4e7}
-      .words{font-size:10px;color:#71717a;font-style:italic;margin-top:4px}
-      .pay-row-green{color:#16a34a}
-      .pay-row-red{color:#dc2626;font-weight:700;font-size:13px}
-      .notes{white-space:pre-wrap;color:#71717a;font-size:11px}
-      .pay-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px}
-      .pay-table th{text-align:left;padding:6px 0;border-bottom:1px solid #e4e4e7;font-weight:500;color:#71717a;font-size:11px}
-      .pay-table th.right{text-align:right}
-      .qr{height:96px;width:96px;object-fit:contain;border:1px solid #e4e4e7;border-radius:6px}
-      .sig{height:60px;object-fit:contain}
-      .footer{text-align:center;font-size:9px;color:#71717a}
-      @media print{body{padding:0}@page{margin:10mm}}
-    </style></head><body><div class="doc">
-      <div class="row">
-        <div class="biz-head">
-          ${logoUrl ? `<img src="${logoUrl}" alt=""/>` : ''}
-          <div>
-            <h2 class="biz-name">${business?.business_name || ''}</h2>
-            ${business?.address ? `<p class="muted">${business.address}</p>` : ''}
-            ${business?.mobile ? `<p class="muted">Tel: ${business.mobile}</p>` : ''}
-            ${business?.email ? `<p class="muted">${business.email}</p>` : ''}
-          </div>
-        </div>
-        <div style="text-align:right">
-          <h1 class="doc-title">${settings?.invoice_title || 'Tax Invoice'}</h1>
-          <span class="badge">${invoice.status}</span>
-        </div>
-      </div>
-
-      ${(business?.gst_number || business?.pan) ? `
-      <div class="grid2" style="margin-top:14px">
-        <div>
-          ${business?.gst_number ? `<p class="muted" style="font-size:11px"><strong style="color:#27272a">GSTIN:</strong> ${business.gst_number}</p>` : ''}
-          ${business?.pan ? `<p class="muted" style="font-size:11px"><strong style="color:#27272a">PAN:</strong> ${business.pan}</p>` : ''}
-        </div>
-        <div></div>
-      </div>` : ''}
-
-      <div class="sep"></div>
-
-      <div class="grid2">
-        <div>
-          <p class="label">Bill To</p>
-          <p style="font-weight:600;margin:0 0 2px">${customer?.business_name || customer?.contact_person || invoice.customer_name || ''}</p>
-          ${customer?.business_name && customer?.contact_person ? `<p class="muted">${customer.contact_person}</p>` : ''}
-          ${customer?.address ? `<p class="muted">${customer.address}</p>` : ''}
-          ${customer?.mobile ? `<p class="muted">Tel: ${customer.mobile}</p>` : ''}
-          ${customer?.gst_number ? `<p class="muted"><strong style="color:#27272a">GSTIN:</strong> ${customer.gst_number}</p>` : ''}
-        </div>
-        <div style="text-align:right">
-          <div class="info-card">
-            <p><strong>Invoice No:</strong> ${invoice.invoice_number}</p>
-            <p><strong>Date:</strong> ${fmtDate(invoice.invoice_date)}</p>
-            ${invoice.due_date ? `<p><strong>Due Date:</strong> ${fmtDate(invoice.due_date)}</p>` : ''}
-          </div>
-        </div>
-      </div>
-
-      <table class="items" style="margin-top:18px">
-        <thead><tr>
-          <th style="width:32px">#</th>
-          <th>Item</th>
-          <th>Description</th>
-          <th style="width:70px">HSN</th>
-          <th style="text-align:right;width:60px">Qty</th>
-          <th style="text-align:right;width:80px">Rate</th>
-          <th style="text-align:right;width:60px">Disc%</th>
-          <th style="text-align:right;width:60px">Tax%</th>
-          <th style="text-align:right;width:90px">Amount</th>
-        </tr></thead>
-        <tbody>${items}</tbody>
-      </table>
-
-      <div class="sum-wrap"><div class="summary">
-        <div class="sum-row"><span class="lbl">Subtotal</span><span>₹${fmt(invoice.subtotal)}</span></div>
-        ${discAmt > 0 ? `<div class="sum-row"><span class="lbl">Discount${invoice.discount_type === 'percentage' ? ` (${invoice.discount_value}%)` : ''}</span><span style="color:#dc2626">-₹${fmt(discAmt)}</span></div>` : ''}
-        <div class="sum-row"><span class="lbl">CGST</span><span>₹${fmt(halfTax)}</span></div>
-        <div class="sum-row"><span class="lbl">SGST</span><span>₹${fmt(halfTax)}</span></div>
-        ${(invoice.freight_charges || 0) > 0 ? `<div class="sum-row"><span class="lbl">Freight Charges</span><span>₹${fmt(invoice.freight_charges)}</span></div>` : ''}
-        ${Math.abs(invoice.round_off || 0) > 0 ? `<div class="sum-row"><span class="lbl">Round Off</span><span${(invoice.round_off || 0) < 0 ? ' style="color:#dc2626"' : ''}>${(invoice.round_off || 0) >= 0 ? '+' : '−'}₹${fmt(Math.abs(invoice.round_off || 0))}</span></div>` : ''}
-        <div class="sum-total"><span>Total</span><span>₹${fmt(invoice.total)}</span></div>
-        <p class="words">${numberToWordsINR(invoice.total || 0)}</p>
-        ${(invoice.amount_paid || 0) > 0 ? `
-          <div class="sum-row pay-row-green"><span>Amount Paid</span><span>₹${fmt(invoice.amount_paid)}</span></div>
-          <div class="sum-row pay-row-red"><span>Balance Due</span><span>₹${fmt(invoice.balance_due)}</span></div>` : ''}
-      </div></div>
-
-      ${invoice.notes ? `<div style="margin-top:18px"><p class="label">Notes</p><p class="notes">${invoice.notes}</p></div>` : ''}
-
-      ${payments.length > 0 ? `
-        <div class="sep"></div>
-        <p class="label">Payment History</p>
-        <table class="pay-table">
-          <thead><tr><th>Date</th><th class="right">Amount</th><th style="padding-left:16px">Method</th><th style="padding-left:16px">Reference</th></tr></thead>
-          <tbody>${paymentRows}</tbody>
-        </table>` : ''}
-
-      ${(settings?.bank_name || settings?.qr_code_image) ? `
-        <div class="sep"></div>
-        <div class="grid2">
-          ${settings?.bank_name ? `
-            <div>
-              <p class="label">Bank Details</p>
-              <p style="font-size:11px;margin:1px 0"><strong>Bank:</strong> ${settings.bank_name}</p>
-              ${settings.bank_account ? `<p style="font-size:11px;margin:1px 0"><strong>A/C No:</strong> ${settings.bank_account}</p>` : ''}
-              ${settings.bank_ifsc ? `<p style="font-size:11px;margin:1px 0"><strong>IFSC:</strong> ${settings.bank_ifsc}</p>` : ''}
-              ${settings.bank_branch ? `<p style="font-size:11px;margin:1px 0"><strong>Branch:</strong> ${settings.bank_branch}</p>` : ''}
-            </div>` : '<div></div>'}
-          ${settings?.qr_code_image ? `<div style="text-align:right"><img class="qr" src="${BASE_URL}/assets/invoice/${settings.qr_code_image}" alt="QR"/></div>` : '<div></div>'}
-        </div>` : ''}
-
-      ${settings?.terms_and_conditions ? `
-        <div class="sep"></div>
-        <p class="label">Terms & Conditions</p>
-        <p class="notes">${settings.terms_and_conditions}</p>` : ''}
-
-      ${settings?.signature_image ? `
-        <div style="display:flex;justify-content:flex-end;margin-top:24px">
-          <div style="text-align:center">
-            <img class="sig" src="${BASE_URL}/assets/invoice/${settings.signature_image}" alt=""/>
-            <p class="muted" style="margin-top:4px">Authorized Signature</p>
-          </div>
-        </div>` : ''}
-
-      ${settings?.footer_text ? `<div class="sep"></div><p class="footer">${settings.footer_text}</p>` : ''}
-    </div></body></html>`;
+    return buildDocumentHTML({
+      doc: invoice,
+      business,
+      customer,
+      settings,
+      payments,
+      baseUrl: BASE_URL,
+      assetDir: 'invoice',
+    });
   };
 
   const handleDownloadPDF = async () => {
     try {
-      const { uri } = await Print.printToFileAsync({ html: generateHTML() });
+      const html = generateHTML();
+      if (!html) { Alert.alert('Error', 'Invoice not loaded yet'); return; }
+      console.log('[PDF] template=', settings?.template, 'html length=', html.length);
+      const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: `Invoice ${invoice.invoice_number}` });
-    } catch (e: any) { Alert.alert('Error', 'Failed to generate PDF'); }
+    } catch (e: any) {
+      console.log('[PDF] error', e);
+      Alert.alert('Error', `Failed to generate PDF: ${e?.message || String(e)}`);
+    }
   };
 
   const handleShareWhatsApp = () => {
@@ -382,22 +182,83 @@ export default function InvoiceDetailScreen({ route, navigation }: { route: any;
 
   if (!invoice) return <View style={s.center}><Text>Loading...</Text></View>;
 
+  const statusAccent: Record<string, string> = {
+    Paid: '#16a34a', 'Partially Paid': '#f59e0b', Overdue: '#dc2626',
+    Sent: '#2563eb', Draft: '#71717a', Cancelled: '#dc2626',
+  };
+  const accent = statusAccent[invoice.status] || colors.primary;
+  const dateFmt = (d?: string) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+  const callCustomer = () => customer?.mobile && Linking.openURL(`tel:${customer.mobile}`);
+  const emailCustomer = () => customer?.email && Linking.openURL(`mailto:${customer.email}`);
+  const whatsappCustomer = () => {
+    const num = (customer?.mobile || '').replace(/\D/g, '');
+    if (!num) return;
+    Linking.openURL(`whatsapp://send?phone=${num.length === 10 ? '91' + num : num}`).catch(() => Alert.alert('Error', 'WhatsApp not installed'));
+  };
+
   return (
     <ScrollView style={s.container}>
-      {/* Header Card */}
-      <View style={s.headerCard}>
-        <View style={s.headerRow}>
-          <Text style={s.invNum}>{invoice.invoice_number}</Text>
-          <StatusBadge status={invoice.status} />
+      {/* HEADER — minimal, elegant */}
+      <View style={s.header}>
+        <View style={s.headerTop}>
+          <View style={[s.accentBar, { backgroundColor: accent }]} />
+          <View style={{ flex: 1 }}>
+            <Text style={s.headerLabel}>INVOICE</Text>
+            <Text style={s.headerNumber}>{invoice.invoice_number}</Text>
+          </View>
+          <View style={[s.statusPill, { backgroundColor: accent + '15', borderColor: accent + '40' }]}>
+            <View style={[s.statusDot, { backgroundColor: accent }]} />
+            <Text style={[s.statusText, { color: accent }]}>{invoice.status}</Text>
+          </View>
         </View>
-        <Text style={s.custName}>{invoice.customer_name || 'N/A'}</Text>
+
+        <View style={s.amountBlock}>
+          <Text style={s.amountLabel}>Total Amount</Text>
+          <Text style={s.amountValue}>₹{Number(invoice.total || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+        </View>
+
         <View style={s.dateRow}>
-          <Text style={s.dateLabel}>Date: {invoice.invoice_date}</Text>
-          <Text style={s.dateLabel}>Due: {invoice.due_date || 'N/A'}</Text>
+          <View style={s.dateCol}>
+            <Text style={s.dateLabel}>Issued</Text>
+            <Text style={s.dateValue}>{dateFmt(invoice.invoice_date)}</Text>
+          </View>
+          <View style={s.dateDiv} />
+          <View style={s.dateCol}>
+            <Text style={s.dateLabel}>Due</Text>
+            <Text style={[s.dateValue, invoice.balance_due > 0 && invoice.due_date && new Date(invoice.due_date) < new Date() ? { color: colors.danger } : null]}>{dateFmt(invoice.due_date)}</Text>
+          </View>
+          <View style={s.dateDiv} />
+          <View style={s.dateCol}>
+            <Text style={s.dateLabel}>Items</Text>
+            <Text style={s.dateValue}>{(invoice.items || []).length}</Text>
+          </View>
         </View>
       </View>
 
-      {/* Quick Actions */}
+      {/* PAYMENT PROGRESS */}
+      {invoice.total > 0 && (
+        <View style={s.progressCard}>
+          <View style={s.progressTopRow}>
+            <View>
+              <Text style={s.progressLabel}>Paid</Text>
+              <Text style={[s.progressAmount, { color: colors.success }]}>₹{Number(invoice.amount_paid || 0).toLocaleString('en-IN')}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={s.progressLabel}>{invoice.balance_due > 0 ? 'Balance' : 'Status'}</Text>
+              <Text style={[s.progressAmount, { color: invoice.balance_due > 0 ? colors.danger : colors.success }]}>
+                {invoice.balance_due > 0 ? `₹${Number(invoice.balance_due).toLocaleString('en-IN')}` : 'Settled'}
+              </Text>
+            </View>
+          </View>
+          <View style={s.progressBar}>
+            <View style={[s.progressFill, { width: `${Math.min(100, Math.max(0, ((invoice.amount_paid || 0) / invoice.total) * 100))}%`, backgroundColor: invoice.balance_due > 0 ? colors.warning : colors.success }]} />
+          </View>
+          <Text style={s.progressPct}>{Math.round(((invoice.amount_paid || 0) / invoice.total) * 100)}% paid</Text>
+        </View>
+      )}
+
+      {/* QUICK ACTIONS */}
       <View style={s.quickActions}>
         <TouchableOpacity style={s.qAction} onPress={() => setShowStatusPicker(true)}>
           <View style={[s.qIcon, { backgroundColor: colors.warning + '20' }]}><Ionicons name="flag-outline" size={20} color={colors.warning} /></View>
@@ -412,10 +273,10 @@ export default function InvoiceDetailScreen({ route, navigation }: { route: any;
           <Text style={s.qLabel}>PDF</Text>
         </TouchableOpacity>
         <TouchableOpacity style={s.qAction} onPress={handleShareWhatsApp}>
-          <View style={[s.qIcon, { backgroundColor: '#25D366' + '20' }]}><Ionicons name="logo-whatsapp" size={20} color="#25D366" /></View>
+          <View style={[s.qIcon, { backgroundColor: '#25D36620' }]}><Ionicons name="logo-whatsapp" size={20} color="#25D366" /></View>
           <Text style={s.qLabel}>WhatsApp</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={s.qAction} onPress={() => { setEmailTo(invoice.customer_email || ''); setShowEmailModal(true); }}>
+        <TouchableOpacity style={s.qAction} onPress={() => { setEmailTo(customer?.email || invoice.customer_email || ''); setShowEmailModal(true); }}>
           <View style={[s.qIcon, { backgroundColor: colors.accent + '20' }]}><Ionicons name="mail-outline" size={20} color={colors.accent} /></View>
           <Text style={s.qLabel}>Email</Text>
         </TouchableOpacity>
@@ -423,120 +284,184 @@ export default function InvoiceDetailScreen({ route, navigation }: { route: any;
           <View style={[s.qIcon, { backgroundColor: colors.info + '20' }]}><Ionicons name="share-outline" size={20} color={colors.info || colors.primary} /></View>
           <Text style={s.qLabel}>Share</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={s.qAction}
+          onPress={() => navigation.getParent()?.navigate('EwayBills', { screen: 'EwayBillForm', params: { invoice_id: invoice.id } })}
+        >
+          <View style={[s.qIcon, { backgroundColor: '#f3e8ff' }]}><Ionicons name="car-outline" size={20} color="#7c3aed" /></View>
+          <Text style={s.qLabel}>E-Way</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Payment button */}
+      {/* PAY CTA */}
       {invoice.balance_due > 0 && (
         <TouchableOpacity style={s.payBtn} onPress={() => { setPayAmount(String(invoice.balance_due)); setShowPayment(true); }}>
-          <Ionicons name="cash-outline" size={20} color={colors.white} />
-          <Text style={s.payText}>Record Payment — ₹{invoice.balance_due?.toFixed(2)} due</Text>
+          <View style={s.payBtnIcon}><Ionicons name="cash" size={18} color="#fff" /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.payText}>Record Payment</Text>
+            <Text style={s.paySub}>₹{Number(invoice.balance_due).toLocaleString('en-IN')} pending</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#fff" />
         </TouchableOpacity>
       )}
 
-      {/* Line Items */}
+      {/* CUSTOMER */}
       <View style={s.section}>
-        <View style={s.itemsHeader}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Ionicons name="cube-outline" size={16} color={colors.primary} />
+        <View style={s.sectionHead}>
+          <View style={s.sectionTitleRow}>
+            <Ionicons name="person-circle-outline" size={18} color={colors.primary} />
+            <Text style={s.sectionTitle}>Bill To</Text>
+          </View>
+        </View>
+        <View style={s.custCard}>
+          <View style={s.custAvatar}>
+            <Text style={s.custAvatarText}>{(customer?.business_name || customer?.contact_person || invoice.customer_name || '?').charAt(0).toUpperCase()}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.custName}>{customer?.business_name || customer?.contact_person || invoice.customer_name || 'N/A'}</Text>
+            {customer?.business_name && customer?.contact_person ? <Text style={s.custMeta}>{customer.contact_person}</Text> : null}
+            {customer?.mobile ? <Text style={s.custMeta}><Ionicons name="call-outline" size={11} color={colors.gray500} /> {customer.mobile}</Text> : null}
+            {customer?.email ? <Text style={s.custMeta} numberOfLines={1}><Ionicons name="mail-outline" size={11} color={colors.gray500} /> {customer.email}</Text> : null}
+            {customer?.gst_number ? <Text style={s.custMeta}><Ionicons name="receipt-outline" size={11} color={colors.gray500} /> GST: {customer.gst_number}</Text> : null}
+          </View>
+        </View>
+        {customer && (customer.mobile || customer.email) ? (
+          <View style={s.custActions}>
+            {customer.mobile ? (
+              <TouchableOpacity style={s.custActionBtn} onPress={callCustomer}>
+                <Ionicons name="call" size={14} color={colors.primary} />
+                <Text style={s.custActionText}>Call</Text>
+              </TouchableOpacity>
+            ) : null}
+            {customer.mobile ? (
+              <TouchableOpacity style={s.custActionBtn} onPress={whatsappCustomer}>
+                <Ionicons name="logo-whatsapp" size={14} color="#25D366" />
+                <Text style={[s.custActionText, { color: '#25D366' }]}>WhatsApp</Text>
+              </TouchableOpacity>
+            ) : null}
+            {customer.email ? (
+              <TouchableOpacity style={s.custActionBtn} onPress={emailCustomer}>
+                <Ionicons name="mail" size={14} color={colors.accent} />
+                <Text style={[s.custActionText, { color: colors.accent }]}>Email</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+
+      {/* ITEMS */}
+      <View style={s.section}>
+        <View style={s.sectionHead}>
+          <View style={s.sectionTitleRow}>
+            <Ionicons name="cube-outline" size={18} color={colors.primary} />
             <Text style={s.sectionTitle}>Items</Text>
           </View>
           <View style={s.itemCountChip}>
             <Text style={s.itemCountText}>{(invoice.items || []).length}</Text>
           </View>
         </View>
-        {(invoice.items || []).map((item: any, i: number) => {
-          const baseAmt = (item.qty || 0) * (item.rate || 0);
-          const discAmt = baseAmt * (item.discount_percent || 0) / 100;
-          const afterDisc = baseAmt - discAmt;
-          return (
-            <View key={i} style={[s.lineItem, i === (invoice.items || []).length - 1 && { borderBottomWidth: 0, marginBottom: 0 }]}>
-              <View style={s.lineHeaderRow}>
-                <View style={s.lineNum}><Text style={s.lineNumText}>{i + 1}</Text></View>
-                <Text style={s.itemName} numberOfLines={2}>{item.item_name}</Text>
-                <CurrencyText amount={item.amount} style={s.itemAmt} />
-              </View>
-              {item.description ? (
-                <Text style={s.itemDesc} numberOfLines={2}>{item.description}</Text>
-              ) : null}
-              <View style={s.itemMetaRow}>
-                <View style={s.metaChip}>
-                  <Text style={s.metaChipLabel}>Qty</Text>
-                  <Text style={s.metaChipValue}>{item.qty}{item.unit ? ` ${item.unit}` : ''}</Text>
-                </View>
-                <View style={s.metaChip}>
-                  <Text style={s.metaChipLabel}>Rate</Text>
-                  <Text style={s.metaChipValue}>₹{Number(item.rate || 0).toFixed(2)}</Text>
-                </View>
-                {item.discount_percent > 0 ? (
-                  <View style={[s.metaChip, { backgroundColor: '#fef3c7' }]}>
-                    <Text style={[s.metaChipLabel, { color: '#b45309' }]}>Disc</Text>
-                    <Text style={[s.metaChipValue, { color: '#b45309' }]}>{item.discount_percent}%</Text>
-                  </View>
-                ) : null}
-                {item.tax_rate > 0 ? (
-                  <View style={[s.metaChip, { backgroundColor: colors.primary + '12' }]}>
-                    <Text style={[s.metaChipLabel, { color: colors.primary }]}>GST</Text>
-                    <Text style={[s.metaChipValue, { color: colors.primary }]}>{item.tax_rate}%</Text>
-                  </View>
-                ) : null}
-              </View>
+        {(invoice.items || []).map((item: any, i: number) => (
+          <View key={i} style={[s.lineItem, i === (invoice.items || []).length - 1 && { borderBottomWidth: 0 }]}>
+            <View style={s.lineHeaderRow}>
+              <View style={s.lineNum}><Text style={s.lineNumText}>{i + 1}</Text></View>
+              <Text style={s.itemName} numberOfLines={2}>{item.item_name}</Text>
+              <CurrencyText amount={item.amount} style={s.itemAmt} />
             </View>
-          );
-        })}
+            {item.description ? <Text style={s.itemDesc} numberOfLines={2}>{item.description}</Text> : null}
+            <View style={s.itemMetaRow}>
+              <View style={s.metaChip}>
+                <Ionicons name="layers-outline" size={10} color={colors.gray600} />
+                <Text style={s.metaChipValue}>{item.qty}{item.unit ? ` ${item.unit}` : ''}</Text>
+              </View>
+              <View style={s.metaChip}>
+                <Ionicons name="pricetag-outline" size={10} color={colors.gray600} />
+                <Text style={s.metaChipValue}>₹{Number(item.rate || 0).toFixed(2)}</Text>
+              </View>
+              {item.discount_percent > 0 ? (
+                <View style={[s.metaChip, { backgroundColor: '#fef3c7' }]}>
+                  <Ionicons name="trending-down" size={10} color="#b45309" />
+                  <Text style={[s.metaChipValue, { color: '#b45309' }]}>{item.discount_percent}%</Text>
+                </View>
+              ) : null}
+              {item.tax_rate > 0 ? (
+                <View style={[s.metaChip, { backgroundColor: colors.primary + '12' }]}>
+                  <Ionicons name="receipt-outline" size={10} color={colors.primary} />
+                  <Text style={[s.metaChipValue, { color: colors.primary }]}>GST {item.tax_rate}%</Text>
+                </View>
+              ) : null}
+              {item.hsn_code ? (
+                <View style={s.metaChip}>
+                  <Text style={[s.metaChipLabel, { fontSize: 9 }]}>HSN</Text>
+                  <Text style={s.metaChipValue}>{item.hsn_code}</Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        ))}
       </View>
 
-      {/* Summary */}
+      {/* SUMMARY */}
       <View style={s.section}>
+        <View style={s.sectionHead}>
+          <View style={s.sectionTitleRow}>
+            <Ionicons name="calculator-outline" size={18} color={colors.primary} />
+            <Text style={s.sectionTitle}>Summary</Text>
+          </View>
+        </View>
         <View style={s.sumRow}><Text style={s.sumLabel}>Subtotal</Text><CurrencyText amount={invoice.subtotal} style={s.sumValue} /></View>
-        {invoice.discount_value > 0 && <View style={s.sumRow}><Text style={s.sumLabel}>Discount ({invoice.discount_type === 'percentage' ? `${invoice.discount_value}%` : 'Flat'})</Text><Text style={s.sumValue}>-₹{(invoice.discount_type === 'percentage' ? (invoice.subtotal * invoice.discount_value / 100) : invoice.discount_value)?.toFixed(2)}</Text></View>}
-        <View style={s.sumRow}><Text style={s.sumLabel}>Tax</Text><CurrencyText amount={invoice.tax_amount} style={s.sumValue} /></View>
+        {invoice.discount_value > 0 && (
+          <View style={s.sumRow}>
+            <Text style={s.sumLabel}>Discount {invoice.discount_type === 'percentage' ? `(${invoice.discount_value}%)` : ''}</Text>
+            <Text style={[s.sumValue, { color: colors.danger }]}>−₹{(invoice.discount_type === 'percentage' ? (invoice.subtotal * invoice.discount_value / 100) : invoice.discount_value)?.toFixed(2)}</Text>
+          </View>
+        )}
+        {invoice.tax_amount > 0 && <View style={s.sumRow}><Text style={s.sumLabel}>Tax (CGST + SGST)</Text><CurrencyText amount={invoice.tax_amount} style={s.sumValue} /></View>}
         <View style={[s.sumRow, s.totalRow]}><Text style={s.totalLabel}>Total</Text><CurrencyText amount={invoice.total} style={s.totalValue} /></View>
-        <View style={s.sumRow}><Text style={s.sumLabel}>Amount Paid</Text><CurrencyText amount={invoice.amount_paid} style={[s.sumValue, { color: colors.success }]} /></View>
-        <View style={s.sumRow}><Text style={[s.sumLabel, { fontWeight: '700' }]}>Balance Due</Text><CurrencyText amount={invoice.balance_due} style={[s.sumValue, { color: colors.danger, fontWeight: '700' }]} /></View>
+        {invoice.amount_paid > 0 && (
+          <>
+            <View style={s.sumRow}><Text style={s.sumLabel}>Amount Paid</Text><CurrencyText amount={invoice.amount_paid} style={[s.sumValue, { color: colors.success, fontWeight: '700' }]} /></View>
+            <View style={[s.sumRow, { backgroundColor: invoice.balance_due > 0 ? '#fef2f2' : '#f0fdf4', marginHorizontal: -spacing.md, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: 4 }]}>
+              <Text style={[s.sumLabel, { fontWeight: '700', color: invoice.balance_due > 0 ? colors.danger : colors.success }]}>
+                {invoice.balance_due > 0 ? 'Balance Due' : 'Fully Paid'}
+              </Text>
+              <CurrencyText amount={invoice.balance_due} style={[s.sumValue, { color: invoice.balance_due > 0 ? colors.danger : colors.success, fontWeight: '800', fontSize: 15 }]} />
+            </View>
+          </>
+        )}
       </View>
 
-      {/* Notes */}
+      {/* NOTES */}
       {invoice.notes ? (
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Notes</Text>
+          <View style={s.sectionHead}>
+            <View style={s.sectionTitleRow}>
+              <Ionicons name="document-text-outline" size={18} color={colors.primary} />
+              <Text style={s.sectionTitle}>Notes</Text>
+            </View>
+          </View>
           <Text style={s.notes}>{invoice.notes}</Text>
         </View>
       ) : null}
 
-      {/* Payment History */}
+      {/* PAYMENT HISTORY */}
       {payments.length > 0 && (
         <View style={s.section}>
-          <View style={s.payHistoryHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Ionicons name="receipt-outline" size={16} color={colors.primary} />
+          <View style={s.sectionHead}>
+            <View style={s.sectionTitleRow}>
+              <Ionicons name="time-outline" size={18} color={colors.primary} />
               <Text style={s.sectionTitle}>Payment History</Text>
             </View>
-            <View style={s.payCountChip}>
-              <Text style={s.payCountText}>{payments.length}</Text>
-            </View>
+            <View style={s.payCountChip}><Text style={s.payCountText}>{payments.length}</Text></View>
           </View>
           {payments.map((p, idx) => (
             <View key={p.id || idx} style={s.payRow}>
-              <View style={s.payIcon}>
-                <Ionicons name="cash" size={16} color={colors.success} />
-              </View>
+              <View style={s.payIcon}><Ionicons name="checkmark-circle" size={18} color={colors.success} /></View>
               <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={s.payDate}>
-                    {p.payment_date
-                      ? new Date(p.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                      : '—'}
-                  </Text>
-                  <View style={s.payMethodChip}>
-                    <Text style={s.payMethodText}>{p.payment_method || 'Cash'}</Text>
-                  </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Text style={s.payDate}>{dateFmt(p.payment_date)}</Text>
+                  <View style={s.payMethodChip}><Text style={s.payMethodText}>{p.payment_method || 'Cash'}</Text></View>
                 </View>
-                {p.reference_number ? (
-                  <Text style={s.payRef}>Ref: {p.reference_number}</Text>
-                ) : null}
-                {p.notes ? (
-                  <Text style={s.payRef} numberOfLines={1}>{p.notes}</Text>
-                ) : null}
+                {p.reference_number ? <Text style={s.payRef}>Ref: {p.reference_number}</Text> : null}
               </View>
               <CurrencyText amount={p.amount} style={s.payAmt} />
             </View>
@@ -544,13 +469,13 @@ export default function InvoiceDetailScreen({ route, navigation }: { route: any;
         </View>
       )}
 
-      {/* More Actions */}
+      {/* MORE */}
       <View style={s.moreActions}>
         <TouchableOpacity style={s.moreBtn} onPress={handleDuplicate}>
           <Ionicons name="copy-outline" size={18} color={colors.gray600} />
           <Text style={s.moreBtnText}>Duplicate Invoice</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[s.moreBtn, { borderColor: colors.danger }]} onPress={handleDelete}>
+        <TouchableOpacity style={[s.moreBtn, { borderColor: colors.danger + '40' }]} onPress={handleDelete}>
           <Ionicons name="trash-outline" size={18} color={colors.danger} />
           <Text style={[s.moreBtnText, { color: colors.danger }]}>Delete Invoice</Text>
         </TouchableOpacity>
@@ -629,74 +554,88 @@ export default function InvoiceDetailScreen({ route, navigation }: { route: any;
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  headerCard: { backgroundColor: colors.white, padding: spacing.lg, marginBottom: spacing.sm },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  invNum: { fontSize: fontSize.xl, fontWeight: '700', color: colors.primary },
-  custName: { fontSize: fontSize.md, color: colors.text, marginTop: spacing.xs },
-  dateRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.sm },
-  dateLabel: { fontSize: fontSize.sm, color: colors.gray500 },
 
-  quickActions: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.white, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs, marginBottom: spacing.sm },
+  // HEADER — minimal white card with accent bar
+  header: { backgroundColor: '#fff', paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.md, marginBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.gray100 },
+  headerTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  accentBar: { width: 3, height: 36, borderRadius: 2 },
+  headerLabel: { fontSize: 9, fontWeight: '800', color: colors.gray500, letterSpacing: 1.5 },
+  headerNumber: { fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: -0.3, marginTop: 1 },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, borderWidth: 1 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
+
+  amountBlock: { marginTop: 16 },
+  amountLabel: { fontSize: 10, fontWeight: '700', color: colors.gray500, letterSpacing: 0.8, textTransform: 'uppercase' },
+  amountValue: { fontSize: 28, fontWeight: '900', color: colors.text, letterSpacing: -0.6, marginTop: 2 },
+
+  dateRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.gray100 },
+  dateCol: { flex: 1 },
+  dateDiv: { width: 1, height: 28, backgroundColor: colors.gray200, marginHorizontal: 4 },
+  dateLabel: { fontSize: 9, fontWeight: '700', color: colors.gray500, letterSpacing: 0.5, textTransform: 'uppercase' },
+  dateValue: { fontSize: 13, fontWeight: '700', color: colors.text, marginTop: 2 },
+
+  // PROGRESS
+  progressCard: { backgroundColor: '#fff', marginHorizontal: spacing.md, marginBottom: spacing.sm, borderRadius: 12, padding: spacing.md },
+  progressTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  progressLabel: { fontSize: 10, fontWeight: '700', color: colors.gray500, letterSpacing: 0.5, textTransform: 'uppercase' },
+  progressAmount: { fontSize: 16, fontWeight: '800', marginTop: 2, letterSpacing: -0.3 },
+  progressBar: { height: 6, backgroundColor: colors.gray100, borderRadius: 3, marginTop: 12, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 3 },
+  progressPct: { fontSize: 10, fontWeight: '700', color: colors.gray500, marginTop: 6, letterSpacing: 0.3 },
+
+  quickActions: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.white, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs, marginHorizontal: spacing.md, marginBottom: spacing.sm, borderRadius: 12 },
   qAction: { width: '16.66%', alignItems: 'center', paddingVertical: spacing.sm },
   qIcon: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
   qLabel: { fontSize: 10, color: colors.gray600, fontWeight: '500' },
 
-  payBtn: { flexDirection: 'row', backgroundColor: colors.success, marginHorizontal: spacing.md, marginBottom: spacing.sm, borderRadius: borderRadius.md, padding: spacing.md, justifyContent: 'center', alignItems: 'center', gap: spacing.xs },
-  payText: { color: colors.white, fontWeight: '700', fontSize: fontSize.md },
+  payBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.success, marginHorizontal: spacing.md, marginBottom: spacing.sm, borderRadius: 14, padding: spacing.md, gap: 12, shadowColor: colors.success, shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
+  payBtnIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
+  payText: { color: colors.white, fontWeight: '800', fontSize: 14, letterSpacing: -0.1 },
+  paySub: { color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '600', marginTop: 1 },
 
-  section: { backgroundColor: colors.white, marginHorizontal: spacing.md, marginBottom: spacing.sm, borderRadius: borderRadius.md, padding: spacing.md },
-  sectionTitle: { fontSize: fontSize.md, fontWeight: '700', color: colors.text, marginBottom: spacing.sm },
-  lineItem: {
-    paddingVertical: spacing.sm + 2,
-    borderBottomWidth: 1, borderBottomColor: colors.gray100,
-    marginBottom: 2,
-  },
-  lineHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  lineNum: {
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: colors.primary + '15',
-    justifyContent: 'center', alignItems: 'center',
-    marginTop: 1,
-  },
+  section: { backgroundColor: colors.white, marginHorizontal: spacing.md, marginBottom: spacing.sm, borderRadius: 12, padding: spacing.md },
+  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionTitle: { fontSize: 14, fontWeight: '800', color: colors.text, letterSpacing: -0.1 },
+
+  // Customer
+  custCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  custAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary + '15', alignItems: 'center', justifyContent: 'center' },
+  custAvatarText: { fontSize: 18, fontWeight: '800', color: colors.primary },
+  custName: { fontSize: 15, fontWeight: '700', color: colors.text, letterSpacing: -0.2 },
+  custMeta: { fontSize: 12, color: colors.gray600, marginTop: 3, lineHeight: 16 },
+  custActions: { flexDirection: 'row', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.gray100 },
+  custActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.gray100 },
+  custActionText: { fontSize: 12, fontWeight: '700', color: colors.primary },
+
+  lineItem: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.gray100 },
+  lineHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  lineNum: { width: 24, height: 24, borderRadius: 8, backgroundColor: colors.primary + '12', justifyContent: 'center', alignItems: 'center', marginTop: 1 },
   lineNumText: { fontSize: 11, fontWeight: '800', color: colors.primary },
-  itemName: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.text, letterSpacing: -0.1, lineHeight: 19 },
-  itemDesc: { fontSize: 12, color: colors.gray500, marginTop: 4, marginLeft: 30, lineHeight: 17 },
-  itemAmt: { fontSize: 14, fontWeight: '700', color: colors.text, letterSpacing: -0.2 },
-  itemMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6, marginLeft: 30 },
-  metaChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 7, paddingVertical: 2,
-    backgroundColor: colors.gray100,
-    borderRadius: 5,
-  },
-  metaChipLabel: { fontSize: 9, fontWeight: '600', color: colors.gray600, textTransform: 'uppercase', letterSpacing: 0.2 },
-  metaChipValue: { fontSize: 11, fontWeight: '600', color: colors.text },
-  itemsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  itemCountChip: { paddingHorizontal: 8, paddingVertical: 2, backgroundColor: colors.primary + '15', borderRadius: 999 },
+  itemName: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.text, letterSpacing: -0.1, lineHeight: 19 },
+  itemDesc: { fontSize: 12, color: colors.gray500, marginTop: 4, marginLeft: 34, lineHeight: 17 },
+  itemAmt: { fontSize: 15, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
+  itemMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8, marginLeft: 34 },
+  metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: colors.gray100, borderRadius: 6 },
+  metaChipLabel: { fontSize: 9, fontWeight: '700', color: colors.gray600, textTransform: 'uppercase', letterSpacing: 0.3 },
+  metaChipValue: { fontSize: 11, fontWeight: '700', color: colors.text },
+  itemCountChip: { paddingHorizontal: 9, paddingVertical: 2, backgroundColor: colors.primary + '15', borderRadius: 999 },
   itemCountText: { fontSize: 11, fontWeight: '800', color: colors.primary },
 
-  sumRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
-  sumLabel: { fontSize: fontSize.sm, color: colors.gray500 },
-  sumValue: { fontSize: fontSize.sm, fontWeight: '500', color: colors.text },
-  totalRow: { borderTopWidth: 1, borderTopColor: colors.gray200, paddingTop: spacing.sm, marginTop: spacing.xs },
-  totalLabel: { fontSize: fontSize.lg, fontWeight: '700', color: colors.text },
-  totalValue: { fontSize: fontSize.lg, fontWeight: '700', color: colors.primary },
+  sumRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 },
+  sumLabel: { fontSize: 13, color: colors.gray600 },
+  sumValue: { fontSize: 13, fontWeight: '600', color: colors.text },
+  totalRow: { borderTopWidth: 1, borderTopColor: colors.gray200, paddingTop: 10, marginTop: 6 },
+  totalLabel: { fontSize: 16, fontWeight: '800', color: colors.text },
+  totalValue: { fontSize: 18, fontWeight: '900', color: colors.primary, letterSpacing: -0.4 },
 
-  notes: { fontSize: fontSize.sm, color: colors.gray600, lineHeight: 20 },
+  notes: { fontSize: 13, color: colors.gray600, lineHeight: 20 },
 
-  payHistoryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  payCountChip: { paddingHorizontal: 8, paddingVertical: 2, backgroundColor: colors.primary + '15', borderRadius: 999 },
+  payCountChip: { paddingHorizontal: 9, paddingVertical: 2, backgroundColor: colors.primary + '15', borderRadius: 999 },
   payCountText: { fontSize: 11, fontWeight: '800', color: colors.primary },
-  payRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: 1, borderBottomColor: colors.gray100,
-  },
-  payIcon: {
-    width: 32, height: 32, borderRadius: 10,
-    backgroundColor: colors.success + '15',
-    alignItems: 'center', justifyContent: 'center',
-  },
+  payRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.gray100 },
+  payIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: colors.success + '15', alignItems: 'center', justifyContent: 'center' },
   payDate: { fontSize: 13, fontWeight: '700', color: colors.text },
   payMethodChip: { paddingHorizontal: 6, paddingVertical: 2, backgroundColor: colors.gray100, borderRadius: 4 },
   payMethodText: { fontSize: 9, fontWeight: '700', color: colors.gray600, textTransform: 'uppercase', letterSpacing: 0.3 },
@@ -704,8 +643,8 @@ const s = StyleSheet.create({
   payAmt: { fontSize: 15, fontWeight: '800', color: colors.success, letterSpacing: -0.3 },
 
   moreActions: { paddingHorizontal: spacing.md, gap: spacing.sm },
-  moreBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.gray200, borderRadius: borderRadius.md, padding: spacing.md },
-  moreBtnText: { fontSize: fontSize.md, color: colors.gray600, fontWeight: '500' },
+  moreBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.gray200, borderRadius: 12, padding: spacing.md, backgroundColor: '#fff' },
+  moreBtnText: { fontSize: fontSize.md, color: colors.gray600, fontWeight: '600' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: spacing.lg },
   statusModal: { backgroundColor: colors.white, borderRadius: borderRadius.lg, padding: spacing.lg },

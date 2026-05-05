@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Modal,
+  Animated,
+  Easing,
+  Dimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -63,6 +68,20 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
   const [itemCount, setItemCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Hero animation
+  const heroFade = useRef(new Animated.Value(0)).current;
+  const heroSlide = useRef(new Animated.Value(20)).current;
+  const heroPulse = useRef(new Animated.Value(0)).current;
+  const [animReceivables, setAnimReceivables] = useState(0);
+  const [animPayables, setAnimPayables] = useState(0);
+  const [heroPage, setHeroPage] = useState(0);
+  const [heroSliderWidth, setHeroSliderWidth] = useState(0);
+  const heroScrollRef = useRef<ScrollView>(null);
+  const [invStatusFilter, setInvStatusFilter] = useState<string>('All');
+  const [quotations, setQuotations] = useState<any[]>([]);
+  const [quoteStatusFilter, setQuoteStatusFilter] = useState<string>('All');
+  const [taskTab, setTaskTab] = useState<string>('All');
 
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
@@ -121,7 +140,7 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
       setBusinesses(bizRes.data);
       const oid = bizRes.data[0]?.org_id;
       if (oid) {
-        const [sumRes, purchRes, expRes, todayExpRes, invRes, custRes, vendRes, itemRes, taskRes, gstRes] =
+        const [sumRes, purchRes, expRes, todayExpRes, invRes, custRes, vendRes, itemRes, taskRes, gstRes, quoteRes] =
           await Promise.all([
             api.get(`/api/reports/summary?org_id=${oid}`),
             api.get(`/api/reports/purchase-summary?org_id=${oid}`),
@@ -133,6 +152,7 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
             api.get(`/api/items?org_id=${oid}`),
             api.get(`/api/tasks?org_id=${oid}`).catch(() => ({ data: [] })),
             api.get(`/api/gst/gstr3b?org_id=${oid}&month=${currentMonth}&year=${currentYear}`).catch(() => ({ data: null })),
+            api.get(`/api/quotations?org_id=${oid}`).catch(() => ({ data: [] })),
           ]);
         setSummary(sumRes.data);
         setPurchaseSummary(purchRes.data);
@@ -148,6 +168,8 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
         setItemCount(Array.isArray(itemRes.data) ? itemRes.data.length : 0);
         setTasks(Array.isArray(taskRes.data) ? taskRes.data : (taskRes.data?.data || []));
         setGstData(gstRes.data);
+        const qList = Array.isArray(quoteRes.data) ? quoteRes.data : (quoteRes.data?.data || []);
+        setQuotations(qList);
       }
     } catch {
     } finally {
@@ -158,6 +180,42 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  // Hero entrance + counter animation when summary loads
+  useEffect(() => {
+    if (!summary && !purchaseSummary) return;
+    Animated.parallel([
+      Animated.timing(heroFade, { toValue: 1, duration: 600, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(heroSlide, { toValue: 0, duration: 600, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+
+    // Tween counters (preserve paise — store as float)
+    const recTarget = summary?.total_outstanding || 0;
+    const payTarget = purchaseSummary?.total_payable || 0;
+    const start = Date.now();
+    const duration = 900;
+    let raf: any;
+    const tick = () => {
+      const t = Math.min(1, (Date.now() - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setAnimReceivables(recTarget * eased);
+      setAnimPayables(payTarget * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else { setAnimReceivables(recTarget); setAnimPayables(payTarget); }
+    };
+    tick();
+    return () => raf && cancelAnimationFrame(raf);
+  }, [summary, purchaseSummary]);
+
+  // Subtle pulse on the receivables badge
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(heroPulse, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(heroPulse, { toValue: 0, duration: 1400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    ).start();
   }, []);
 
   // Fetch revenue for current period whenever period or org changes
@@ -213,6 +271,30 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
     [filteredInvoices]
   );
 
+  // Status-filtered list of last 5 invoices for the elegant card
+  const recentByStatus = useMemo(() => {
+    const sorted = [...filteredInvoices].sort((a: any, b: any) => (b.invoice_date || '').localeCompare(a.invoice_date || ''));
+    const filtered = invStatusFilter === 'All' ? sorted : sorted.filter((i: any) => i.status === invStatusFilter);
+    return filtered.slice(0, 5);
+  }, [filteredInvoices, invStatusFilter]);
+
+  // Recent unique customers (last 6) from filtered invoices
+  const recentCustomers = useMemo(() => {
+    const sorted = [...filteredInvoices].sort((a: any, b: any) => (b.invoice_date || '').localeCompare(a.invoice_date || ''));
+    const seen = new Set<string>();
+    const out: { name: string; id?: any }[] = [];
+    for (const inv of sorted) {
+      const name = (inv.customer_name || '').trim();
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      out.push({ name, id: inv.customer_id });
+      if (out.length >= 6) break;
+    }
+    return out;
+  }, [filteredInvoices]);
+
+  const customerColors = ['#4f46e5', '#0891b2', '#059669', '#d97706', '#dc2626', '#7c3aed', '#0ea5e9', '#16a34a'];
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -237,6 +319,16 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
   // Bento KPI cards — receivables/payables (large), then expenses/stock/customers (small)
   const receivables = summary?.total_outstanding || 0;
   const payables = purchaseSummary?.total_payable || 0;
+  const unpaidCount = summary?.unpaid_count || 0;
+  const overdueCount = summary?.overdue_count || 0;
+  const totalReceived = summary?.total_received || 0;
+  const totalInvoiced = summary?.total_invoiced || 0;
+  const collectionRate = totalInvoiced > 0 ? Math.min(100, Math.round((totalReceived / totalInvoiced) * 100)) : 0;
+  const billsUnpaid = purchaseSummary?.unpaid_count || 0;
+  const billsOverdue = purchaseSummary?.overdue_count || 0;
+  const totalBilled = purchaseSummary?.total_billed || 0;
+  const totalPaidOut = purchaseSummary?.total_paid || 0;
+  const payRate = totalBilled > 0 ? Math.min(100, Math.round((totalPaidOut / totalBilled) * 100)) : 0;
 
   // Recent 5
   const recentTasks = Array.isArray(tasks) ? tasks.slice(0, 5) : [];
@@ -327,13 +419,21 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
       refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}
     >
-      {/* Hero — greeting + business avatar */}
-      <View style={styles.hero}>
+      {/* Hero — welcome card with animated receivables */}
+      <Animated.View
+        style={[
+          styles.hero,
+          { opacity: heroFade, transform: [{ translateY: heroSlide }] },
+        ]}
+      >
         <View style={styles.heroBgAccent} />
         <View style={styles.heroBgAccent2} />
-        <View style={styles.heroRow}>
+        <View style={styles.heroBgAccent3} />
+
+        {/* Top: greeting + biz name + avatar */}
+        <View style={styles.heroTopRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.heroGreeting}>{greeting}</Text>
+            <Text style={styles.heroGreeting}>{greeting} 👋</Text>
             <Text style={styles.heroBiz} numberOfLines={1}>{bizName}</Text>
             <View style={styles.heroDateChip}>
               <Ionicons name="calendar-outline" size={11} color="rgba(255,255,255,0.85)" />
@@ -350,65 +450,179 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
             <Text style={styles.heroAvatarText}>{bizInitial}</Text>
           </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Quick actions */}
-      <View style={styles.quickRow}>
-        {[
-          { label: 'Invoice', icon: 'document-text' as const, color: '#4f46e5', onPress: () => navigateToTab('Invoices') },
-          { label: 'Expense', icon: 'receipt' as const, color: '#f59e0b', onPress: () => openCreate('Expenses', 'ExpenseList') },
-          { label: 'Payment', icon: 'cash' as const, color: '#10b981', onPress: () => navigateToTab('Payments') },
-          { label: 'Task', icon: 'checkbox' as const, color: '#0ea5e9', onPress: () => openCreate('Tasks', 'TaskForm') },
-        ].map(q => (
-          <TouchableOpacity key={q.label} style={styles.quickBtn} activeOpacity={0.75} onPress={q.onPress}>
-            <View style={[styles.quickIconWrap, { backgroundColor: q.color + '15' }]}>
-              <Ionicons name={q.icon} size={20} color={q.color} />
-            </View>
-            <Text style={styles.quickLabel}>{q.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Bento KPI Grid */}
-      <View style={styles.bento}>
-        {/* Row 1 — two big cards */}
-        <View style={styles.bentoRow}>
-          <TouchableOpacity
-            style={[styles.bentoBig, { backgroundColor: '#10B981' }]}
-            activeOpacity={0.85}
-            onPress={() => navigateToTab('Payments')}
-          >
-            <View style={styles.bentoBigHeader}>
-              <View style={styles.bentoChip}>
-                <Ionicons name="arrow-down-circle-outline" size={14} color="#ffffff" />
-                <Text style={styles.bentoChipText}>Receivable</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.7)" />
-            </View>
-            <Text style={styles.bentoBigLabel}>Total Receivables</Text>
-            <CurrencyText amount={receivables} style={styles.bentoBigValue} />
-            <Text style={styles.bentoBigFoot}>From customers</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.bentoBig, { backgroundColor: '#EF4444' }]}
-            activeOpacity={0.85}
-            onPress={() => navigateToTab('PurchasePayments')}
-          >
-            <View style={styles.bentoBigHeader}>
-              <View style={styles.bentoChip}>
-                <Ionicons name="arrow-up-circle-outline" size={14} color="#ffffff" />
-                <Text style={styles.bentoChipText}>Payable</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.7)" />
-            </View>
-            <Text style={styles.bentoBigLabel}>Total Payables</Text>
-            <CurrencyText amount={payables} style={styles.bentoBigValue} />
-            <Text style={styles.bentoBigFoot}>To vendors</Text>
-          </TouchableOpacity>
+        {/* Divider with sparkle */}
+        <View style={styles.heroDivider}>
+          <View style={styles.heroDividerLine} />
+          <Ionicons name="sparkles" size={11} color="rgba(255,255,255,0.45)" />
+          <View style={styles.heroDividerLine} />
         </View>
 
-        {/* Row 2 — three small cards */}
+        {/* Receivables / Payables — swipeable slider */}
+        <View
+          style={styles.heroSliderWrap}
+          onLayout={(e) => setHeroSliderWidth(e.nativeEvent.layout.width)}
+        >
+          {heroSliderWidth > 0 && (
+            <ScrollView
+              ref={heroScrollRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+                const idx = Math.round(e.nativeEvent.contentOffset.x / heroSliderWidth);
+                setHeroPage(idx);
+              }}
+            >
+              {/* PAGE 1 — Receivables */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => navigateToTab('Invoices')}
+                style={[styles.heroRecBlock, { width: heroSliderWidth }]}
+              >
+                <View style={{ flex: 1 }}>
+                  <View style={styles.heroRecLabelRow}>
+                    <Animated.View
+                      style={[
+                        styles.heroPulseDot,
+                        { backgroundColor: '#86efac',
+                          opacity: heroPulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }),
+                          transform: [{ scale: heroPulse.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1.15] }) }],
+                        },
+                      ]}
+                    />
+                    <Text style={styles.heroRecLabel}>OVERALL RECEIVABLES</Text>
+                  </View>
+                  <View style={styles.heroRecAmountRow}>
+                    <Text style={styles.heroRecCurrency}>₹</Text>
+                    <Text style={styles.heroRecAmount} numberOfLines={1} adjustsFontSizeToFit>
+                      {animReceivables.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
+                  </View>
+                  <View style={styles.heroMetaRow}>
+                    {unpaidCount > 0 && (
+                      <View style={styles.heroMetaPill}>
+                        <Ionicons name="document-text-outline" size={10} color="#ffffff" />
+                        <Text style={styles.heroMetaText}>{unpaidCount} unpaid</Text>
+                      </View>
+                    )}
+                    {overdueCount > 0 && (
+                      <View style={[styles.heroMetaPill, { backgroundColor: 'rgba(239,68,68,0.35)' }]}>
+                        <Ionicons name="alert-circle-outline" size={10} color="#fecaca" />
+                        <Text style={[styles.heroMetaText, { color: '#fecaca' }]}>{overdueCount} overdue</Text>
+                      </View>
+                    )}
+                    {totalInvoiced > 0 && (
+                      <View style={styles.heroMetaPill}>
+                        <Ionicons name="trending-up" size={10} color="#86efac" />
+                        <Text style={styles.heroMetaText}>{collectionRate}% collected</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+                <View style={styles.heroRecArrow}>
+                  <Ionicons name="arrow-forward" size={18} color="#ffffff" />
+                </View>
+              </TouchableOpacity>
+
+              {/* PAGE 2 — Payables */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => navigateToTab('PurchasePayments')}
+                style={[styles.heroRecBlock, { width: heroSliderWidth }]}
+              >
+                <View style={{ flex: 1 }}>
+                  <View style={styles.heroRecLabelRow}>
+                    <Animated.View
+                      style={[
+                        styles.heroPulseDot,
+                        { backgroundColor: '#fca5a5',
+                          opacity: heroPulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }),
+                          transform: [{ scale: heroPulse.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1.15] }) }],
+                        },
+                      ]}
+                    />
+                    <Text style={styles.heroRecLabel}>OVERALL PAYABLES</Text>
+                  </View>
+                  <View style={styles.heroRecAmountRow}>
+                    <Text style={styles.heroRecCurrency}>₹</Text>
+                    <Text style={styles.heroRecAmount} numberOfLines={1} adjustsFontSizeToFit>
+                      {animPayables.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
+                  </View>
+                  <View style={styles.heroMetaRow}>
+                    {billsUnpaid > 0 && (
+                      <View style={styles.heroMetaPill}>
+                        <Ionicons name="document-text-outline" size={10} color="#ffffff" />
+                        <Text style={styles.heroMetaText}>{billsUnpaid} unpaid</Text>
+                      </View>
+                    )}
+                    {billsOverdue > 0 && (
+                      <View style={[styles.heroMetaPill, { backgroundColor: 'rgba(239,68,68,0.35)' }]}>
+                        <Ionicons name="alert-circle-outline" size={10} color="#fecaca" />
+                        <Text style={[styles.heroMetaText, { color: '#fecaca' }]}>{billsOverdue} overdue</Text>
+                      </View>
+                    )}
+                    {totalBilled > 0 && (
+                      <View style={styles.heroMetaPill}>
+                        <Ionicons name="trending-up" size={10} color="#fca5a5" />
+                        <Text style={styles.heroMetaText}>{payRate}% paid</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+                <View style={styles.heroRecArrow}>
+                  <Ionicons name="arrow-forward" size={18} color="#ffffff" />
+                </View>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+
+          {/* Page indicators */}
+          <View style={styles.heroDots}>
+            {[0, 1].map(i => (
+              <TouchableOpacity
+                key={i}
+                onPress={() => {
+                  heroScrollRef.current?.scrollTo({ x: i * heroSliderWidth, animated: true });
+                  setHeroPage(i);
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <View style={[styles.heroDot, heroPage === i && styles.heroDotActive]} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Animated.View>
+
+      {/* Quick actions */}
+      <View style={styles.quickSection}>
+        <View style={styles.quickHeader}>
+          <Text style={styles.quickSectionTitle}>Quick Actions</Text>
+          <View style={styles.quickHeaderLine} />
+        </View>
+        <View style={styles.quickRow}>
+          {[
+            { label: 'Invoice', icon: 'document-text' as const, color: '#4f46e5', onPress: () => navigateToTab('Invoices') },
+            { label: 'Quotation', icon: 'reader' as const, color: '#7c3aed', onPress: () => navigateToTab('Quotations') },
+            { label: 'Expense', icon: 'receipt' as const, color: '#f59e0b', onPress: () => openCreate('Expenses', 'ExpenseList') },
+            { label: 'Payment', icon: 'cash' as const, color: '#10b981', onPress: () => navigateToTab('Payments') },
+            { label: 'Task', icon: 'checkbox' as const, color: '#0ea5e9', onPress: () => openCreate('Tasks', 'TaskForm') },
+          ].map(q => (
+            <TouchableOpacity key={q.label} style={styles.quickBtn} activeOpacity={0.7} onPress={q.onPress}>
+              <View style={[styles.quickIconWrap, { backgroundColor: q.color + '18', borderColor: q.color + '35' }]}>
+                <Ionicons name={q.icon} size={20} color={q.color} />
+              </View>
+              <Text style={styles.quickLabel} numberOfLines={1}>{q.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Bento KPI Grid — small cards only */}
+      <View style={styles.bento}>
+        {/* Three small cards */}
         <View style={styles.bentoRow}>
           <TouchableOpacity style={styles.bentoSmall} activeOpacity={0.85} onPress={() => navigateToTab('Expenses')}>
             <View style={[styles.bentoSmallIcon, { backgroundColor: '#FEF3C7' }]}>
@@ -437,254 +651,548 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
         </View>
       </View>
 
-      {/* Revenue Overview — selectable period */}
-      <View style={styles.section}>
-        <View style={styles.revHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>Revenue Overview</Text>
-            <Text style={styles.revPeriodText}>{periodLabel}</Text>
-          </View>
-          <TouchableOpacity style={styles.revFilterBtn} onPress={() => setRevModalOpen(true)} activeOpacity={0.8}>
-            <Ionicons name="options-outline" size={14} color={colors.primary} />
-            <Text style={styles.revFilterText}>Filter</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.card}>
-          {(() => {
-            const max = Math.max(revenue.sales, revenue.purchases, 1);
-            const net = revenue.sales - revenue.purchases;
-            return (
-              <>
-                <View style={styles.revenueRow}>
-                  <View style={styles.revItem}>
-                    <View style={styles.revLabelRow}>
-                      <View style={[styles.revDot, { backgroundColor: '#3b82f6' }]} />
-                      <Text style={styles.revLabel}>Sales</Text>
-                    </View>
-                    <CurrencyText amount={revenue.sales} style={styles.revValue} />
-                    <View style={styles.barBg}>
-                      <View style={[styles.bar, { width: `${(revenue.sales / max) * 100}%`, backgroundColor: '#3b82f6' }]} />
-                    </View>
-                  </View>
-                  <View style={styles.revItem}>
-                    <View style={styles.revLabelRow}>
-                      <View style={[styles.revDot, { backgroundColor: '#ef4444' }]} />
-                      <Text style={styles.revLabel}>Purchases</Text>
-                    </View>
-                    <CurrencyText amount={revenue.purchases} style={styles.revValue} />
-                    <View style={styles.barBg}>
-                      <View style={[styles.bar, { width: `${(revenue.purchases / max) * 100}%`, backgroundColor: '#ef4444' }]} />
-                    </View>
-                  </View>
-                </View>
-                <View style={styles.netRow}>
-                  <Text style={styles.netLabel}>Net</Text>
-                  <CurrencyText amount={net} style={[styles.netValue, { color: net >= 0 ? '#10B981' : '#EF4444' }]} />
-                </View>
-                {revenueLoading && <Text style={styles.revLoadingText}>Updating…</Text>}
-              </>
-            );
-          })()}
-        </View>
-      </View>
-
-      {/* Invoices — unified creative card */}
-      <View style={styles.section}>
-        <View style={styles.revHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>Invoices</Text>
-            <Text style={styles.revPeriodText}>{invPeriodLabel}</Text>
-          </View>
-          <TouchableOpacity style={styles.revFilterBtn} onPress={() => setInvModalOpen(true)} activeOpacity={0.8}>
-            <Ionicons name="options-outline" size={14} color={colors.primary} />
-            <Text style={styles.revFilterText}>Filter</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* All-invoices hero chip */}
-        <TouchableOpacity
-          style={styles.invHero}
-          activeOpacity={0.85}
-          onPress={() => navigateToTab('Invoices')}
-        >
-          <View style={styles.invHeroIconWrap}>
-            <Ionicons name="document-text" size={22} color="#ffffff" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.invHeroLabel}>All Invoices</Text>
-            <View style={styles.invHeroValueRow}>
-              <Text style={styles.invHeroCount}>{filteredInvoices.length}</Text>
-              <Text style={styles.invHeroSep}>•</Text>
-              <CurrencyText amount={filteredTotal} style={styles.invHeroAmount} />
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-        </TouchableOpacity>
-
-        {/* Status chips */}
-        <View style={styles.statusGrid}>
-          {[
-            { key: 'Draft', label: 'Drafted', color: '#6B7280', bg: '#F3F4F6', icon: 'create-outline' },
-            { key: 'Sent', label: 'Sent', color: '#2563EB', bg: '#DBEAFE', icon: 'send-outline' },
-            { key: 'Paid', label: 'Paid', color: '#059669', bg: '#D1FAE5', icon: 'checkmark-circle-outline' },
-            { key: 'Partially Paid', label: 'Partial', color: '#D97706', bg: '#FEF3C7', icon: 'time-outline' },
-            { key: 'Overdue', label: 'Overdue', color: '#DC2626', bg: '#FEE2E2', icon: 'alert-circle-outline' },
-          ].map(s => (
-            <View key={s.key} style={styles.statusChip}>
-              <View style={[styles.statusChipIcon, { backgroundColor: s.bg }]}>
-                <Ionicons name={s.icon as any} size={14} color={s.color} />
+      {/* Invoices — elegant unified card */}
+      <View style={styles.invCardWrap}>
+        <View style={styles.invCard}>
+          {/* Header: title + period filter */}
+          <View style={styles.invCardHeader}>
+            <View style={styles.invCardTitleRow}>
+              <View style={styles.invCardTitleIcon}>
+                <Ionicons name="receipt-outline" size={16} color="#4f46e5" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.statusChipLabel}>{s.label}</Text>
-                <Text style={[styles.statusChipCount, { color: s.color }]}>{filteredStatusCounts[s.key] || 0}</Text>
+                <Text style={styles.invCardTitle}>Invoices</Text>
+                <Text style={styles.invCardPeriod}>{invPeriodLabel}</Text>
               </View>
-            </View>
-          ))}
-        </View>
-
-        {/* Recent 5 within period */}
-        <View style={styles.recentBlock}>
-          <View style={styles.recentHeader}>
-            <Text style={styles.recentTitle}>Recent</Text>
-            {filteredInvoices.length > 5 && (
-              <TouchableOpacity onPress={() => navigateToTab('Invoices')}>
-                <Text style={styles.viewAll}>View all</Text>
+              <TouchableOpacity style={styles.invCardFilter} onPress={() => setInvModalOpen(true)} activeOpacity={0.75}>
+                <Ionicons name="calendar-outline" size={13} color={colors.primary} />
+                <Text style={styles.invCardFilterText}>Filter</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Stats strip — sales value + count */}
+          <TouchableOpacity
+            style={styles.invStatsStrip}
+            activeOpacity={0.85}
+            onPress={() => navigateToTab('Invoices')}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.invStatsLabel}>SALES VALUE</Text>
+              <CurrencyText amount={filteredTotal} style={styles.invStatsValue} />
+              <Text style={styles.invStatsSub}>
+                <Text style={{ fontWeight: '700', color: colors.gray800 }}>{filteredInvoices.length}</Text>
+                {' '}invoice{filteredInvoices.length === 1 ? '' : 's'}
+                {totalReceived > 0 && (
+                  <>
+                    {'  ·  '}
+                    <Text style={{ color: '#059669', fontWeight: '700' }}>₹{totalReceived.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</Text>
+                    {' received'}
+                  </>
+                )}
+              </Text>
+            </View>
+            <View style={styles.invStatsArrow}>
+              <Ionicons name="arrow-forward" size={16} color="#4f46e5" />
+            </View>
+          </TouchableOpacity>
+
+          {/* Recent customers */}
+          {recentCustomers.length > 0 && (
+            <View style={styles.invCustomersBlock}>
+              <Text style={styles.invSubHeading}>Recent Customers</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.invCustomersRow}>
+                {recentCustomers.map((c, idx) => {
+                  const color = customerColors[idx % customerColors.length];
+                  const initial = c.name.trim().charAt(0).toUpperCase();
+                  return (
+                    <TouchableOpacity
+                      key={`${c.name}-${idx}`}
+                      style={styles.invCustomer}
+                      activeOpacity={0.7}
+                      onPress={() => navigateToTab('Customers')}
+                    >
+                      <View style={[styles.invCustomerAvatar, { backgroundColor: color + '18', borderColor: color + '40' }]}>
+                        <Text style={[styles.invCustomerInitial, { color }]}>{initial}</Text>
+                      </View>
+                      <Text style={styles.invCustomerName} numberOfLines={1}>{c.name.split(' ')[0]}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Status filter chips */}
+          <View style={styles.invChipsBlock}>
+            <Text style={styles.invSubHeading}>Recent Sales</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.invChipsRow}>
+              {[
+                { key: 'All', color: colors.primary },
+                { key: 'Draft', color: '#6b7280' },
+                { key: 'Sent', color: '#2563eb' },
+                { key: 'Paid', color: '#059669' },
+                { key: 'Partially Paid', label: 'Partial', color: '#d97706' },
+                { key: 'Overdue', color: '#dc2626' },
+              ].map((c: any) => {
+                const active = invStatusFilter === c.key;
+                const count = c.key === 'All' ? filteredInvoices.length : (filteredStatusCounts[c.key] || 0);
+                return (
+                  <TouchableOpacity
+                    key={c.key}
+                    style={[
+                      styles.invChip,
+                      active && { backgroundColor: c.color, borderColor: c.color },
+                    ]}
+                    activeOpacity={0.75}
+                    onPress={() => setInvStatusFilter(c.key)}
+                  >
+                    <Text style={[styles.invChipText, active && { color: '#fff' }]}>
+                      {c.label || c.key}
+                    </Text>
+                    <View style={[
+                      styles.invChipCount,
+                      active && { backgroundColor: 'rgba(255,255,255,0.25)' },
+                    ]}>
+                      <Text style={[styles.invChipCountText, active && { color: '#fff' }]}>{count}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+
+          {/* Recent invoices list (last 5 by status) */}
+          <View style={styles.invListBlock}>
+            {recentByStatus.length === 0 ? (
+              <View style={styles.invListEmpty}>
+                <Ionicons name="document-outline" size={26} color={colors.gray300} />
+                <Text style={styles.invListEmptyText}>No invoices to show</Text>
+              </View>
+            ) : (
+              recentByStatus.map((inv: any, idx: number) => {
+                const initial = (inv.customer_name || 'C').trim().charAt(0).toUpperCase();
+                const color = customerColors[idx % customerColors.length];
+                return (
+                  <TouchableOpacity
+                    key={inv.id}
+                    style={[styles.invRow, idx === recentByStatus.length - 1 && { borderBottomWidth: 0 }]}
+                    activeOpacity={0.7}
+                    onPress={() =>
+                      navigation.getParent()?.navigate('Invoices', {
+                        screen: 'InvoiceDetail',
+                        params: { id: inv.id },
+                      })
+                    }
+                  >
+                    <View style={[styles.invRowAvatar, { backgroundColor: color + '18' }]}>
+                      <Text style={[styles.invRowInitial, { color }]}>{initial}</Text>
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.invRowCustomer} numberOfLines={1}>{inv.customer_name || 'No customer'}</Text>
+                      <Text style={styles.invRowMeta} numberOfLines={1}>
+                        {inv.invoice_number} · {(inv.invoice_date || '').slice(0, 10)}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                      <CurrencyText amount={inv.total} style={styles.invRowAmount} />
+                      <StatusBadge status={inv.status} />
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
             )}
           </View>
-          {recentFiltered.length === 0 ? (
-            <View style={styles.recentEmpty}>
-              <Ionicons name="document-outline" size={28} color={colors.gray300} />
-              <Text style={styles.noData}>No invoices in this period</Text>
-            </View>
-          ) : (
-            recentFiltered.map((inv: any) => (
-              <TouchableOpacity
-                key={inv.id}
-                style={styles.invMiniRow}
-                activeOpacity={0.7}
-                onPress={() =>
-                  navigation.getParent()?.navigate('Invoices', {
-                    screen: 'InvoiceDetail',
-                    params: { id: inv.id },
-                  })
-                }
-              >
-                <View style={styles.invMiniBullet} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.invMiniNumber}>{inv.invoice_number}</Text>
-                  <Text style={styles.invMiniSub} numberOfLines={1}>{inv.customer_name || 'N/A'}</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <CurrencyText amount={inv.total} style={styles.invMiniAmount} />
-                  <StatusBadge status={inv.status} />
-                </View>
-              </TouchableOpacity>
-            ))
-          )}
+
+          {/* Footer view-all */}
+          <TouchableOpacity style={styles.invFooter} activeOpacity={0.7} onPress={() => navigateToTab('Invoices')}>
+            <Text style={styles.invFooterText}>View all invoices</Text>
+            <Ionicons name="arrow-forward" size={13} color={colors.primary} />
+          </TouchableOpacity>
         </View>
       </View>
 
       {/* GST Summary intentionally removed — see /gst tab */}
 
-      {/* Tasks — creative ticket style */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={styles.sectionTitle}>Recent Tasks</Text>
-            {tasks.length > 0 && (
-              <View style={styles.countPill}>
-                <Text style={styles.countPillText}>{tasks.length}</Text>
-              </View>
-            )}
-          </View>
-          {tasks.length > 5 && (
-            <TouchableOpacity onPress={() => navigateToTab('Tasks')}>
-              <Text style={styles.viewAll}>View All</Text>
+      {/* Tasks — modern board layout */}
+      <View style={styles.taskWrap}>
+        {/* Header card with completion ring */}
+        <View style={styles.taskHero}>
+          <View style={styles.taskHeroBgOrb1} />
+          <View style={styles.taskHeroBgOrb2} />
+
+          <View style={styles.taskHeroTopRow}>
+            <View style={styles.taskHeroBadge}>
+              <Ionicons name="layers" size={11} color="#fff" />
+              <Text style={styles.taskHeroBadgeText}>WORKFLOW</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.taskHeroBtn}
+              activeOpacity={0.85}
+              onPress={() => openCreate('Tasks', 'TaskForm')}
+            >
+              <Ionicons name="add" size={14} color="#ffffff" />
+              <Text style={styles.taskHeroBtnText}>New Task</Text>
             </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Status summary strip */}
-        {tasks.length > 0 && (
-          <View style={styles.taskStatRow}>
-            {[
-              { key: 'Pending', label: 'Pending', color: '#6b7280', icon: 'ellipse-outline' as const },
-              { key: 'In Progress', label: 'Active', color: '#2563eb', icon: 'play-circle' as const },
-              { key: 'Completed', label: 'Done', color: '#16a34a', icon: 'checkmark-circle' as const },
-              { key: 'Delayed', label: 'Delayed', color: '#dc2626', icon: 'alert-circle' as const },
-            ].map(s => (
-              <View key={s.key} style={styles.taskStatChip}>
-                <Ionicons name={s.icon} size={14} color={s.color} />
-                <Text style={styles.taskStatLabel}>{s.label}</Text>
-                <Text style={[styles.taskStatCount, { color: s.color }]}>{taskStatusCounts[s.key] || 0}</Text>
-              </View>
-            ))}
           </View>
-        )}
 
-        {recentTasks.length === 0 ? (
-          <View style={styles.tasksEmpty}>
-            <Ionicons name="clipboard-outline" size={36} color={colors.gray300} />
-            <Text style={styles.noData}>No tasks yet</Text>
-          </View>
-        ) : (
-          recentTasks.map((task: any) => {
-            const chip = dueChip(task);
-            const pColor = priorityColor(task.priority);
-            return (
-              <TouchableOpacity
-                key={task.id}
-                style={styles.ticket}
-                activeOpacity={0.85}
-                onPress={() =>
-                  navigation.getParent()?.navigate('Tasks', {
-                    screen: 'TaskDetail',
-                    params: { id: task.id },
-                  })
-                }
-              >
-                <View style={[styles.ticketStrip, { backgroundColor: pColor }]} />
-                <View style={styles.ticketBody}>
-                  <View style={styles.ticketTopRow}>
-                    <View style={[styles.avatar, { backgroundColor: pColor + '22', borderColor: pColor }]}>
-                      <Text style={[styles.avatarText, { color: pColor }]}>{taskInitial(task)}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.ticketTitle} numberOfLines={1}>{task.title}</Text>
-                      <View style={styles.ticketMeta}>
-                        {task.employee_name ? (
-                          <View style={styles.metaItem}>
-                            <Ionicons name="person-outline" size={11} color={colors.gray500} />
-                            <Text style={styles.metaText} numberOfLines={1}>{task.employee_name}</Text>
-                          </View>
-                        ) : null}
-                        {task.customer_name ? (
-                          <View style={styles.metaItem}>
-                            <Ionicons name="business-outline" size={11} color={colors.gray500} />
-                            <Text style={styles.metaText} numberOfLines={1}>{task.customer_name}</Text>
-                          </View>
-                        ) : null}
-                      </View>
-                    </View>
-                    <StatusBadge status={task.status} />
-                  </View>
-                  <View style={styles.ticketBottom}>
-                    <View style={[styles.priorityTag, { backgroundColor: pColor + '15' }]}>
-                      <View style={[styles.priorityDot, { backgroundColor: pColor }]} />
-                      <Text style={[styles.priorityTagText, { color: pColor }]}>{task.priority}</Text>
-                    </View>
-                    <View style={[styles.dueChip, { backgroundColor: chip.bg }]}>
-                      <Ionicons name={chip.icon} size={11} color={chip.fg} />
-                      <Text style={[styles.dueChipText, { color: chip.fg }]}>{chip.text}</Text>
+          <View style={styles.taskHeroValueRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.taskHeroTitle}>Tasks Board</Text>
+              <Text style={styles.taskHeroSub}>
+                {tasks.length === 0
+                  ? 'No tasks yet — create one to get started'
+                  : `${tasks.length} total · ${taskStatusCounts['Completed'] || 0} completed`}
+              </Text>
+            </View>
+            {tasks.length > 0 && (() => {
+              const done = taskStatusCounts['Completed'] || 0;
+              const pct = Math.round((done / tasks.length) * 100);
+              return (
+                <View style={styles.taskRingWrap}>
+                  <View style={styles.taskRingOuter}>
+                    <View style={styles.taskRingInner}>
+                      <Text style={styles.taskRingPct}>{pct}%</Text>
+                      <Text style={styles.taskRingLabel}>done</Text>
                     </View>
                   </View>
                 </View>
-              </TouchableOpacity>
+              );
+            })()}
+          </View>
+
+          {tasks.length > 0 && (
+            <View style={styles.taskHeroMiniRow}>
+              <View style={styles.taskHeroMini}>
+                <View style={[styles.taskHeroMiniDot, { backgroundColor: '#94a3b8' }]} />
+                <Text style={styles.taskHeroMiniNum}>{taskStatusCounts['Pending'] || 0}</Text>
+                <Text style={styles.taskHeroMiniLabel}>To Do</Text>
+              </View>
+              <View style={styles.taskHeroMiniSep} />
+              <View style={styles.taskHeroMini}>
+                <View style={[styles.taskHeroMiniDot, { backgroundColor: '#60a5fa' }]} />
+                <Text style={styles.taskHeroMiniNum}>{taskStatusCounts['In Progress'] || 0}</Text>
+                <Text style={styles.taskHeroMiniLabel}>Active</Text>
+              </View>
+              <View style={styles.taskHeroMiniSep} />
+              <View style={styles.taskHeroMini}>
+                <View style={[styles.taskHeroMiniDot, { backgroundColor: '#34d399' }]} />
+                <Text style={styles.taskHeroMiniNum}>{taskStatusCounts['Completed'] || 0}</Text>
+                <Text style={styles.taskHeroMiniLabel}>Done</Text>
+              </View>
+              <View style={styles.taskHeroMiniSep} />
+              <View style={styles.taskHeroMini}>
+                <View style={[styles.taskHeroMiniDot, { backgroundColor: '#f87171' }]} />
+                <Text style={styles.taskHeroMiniNum}>{taskStatusCounts['Delayed'] || 0}</Text>
+                <Text style={styles.taskHeroMiniLabel}>Delayed</Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Status filter pills */}
+        {tasks.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.taskTabRow}
+          >
+            {[
+              { key: 'All',         label: 'All',         color: colors.primary },
+              { key: 'Pending',     label: 'To Do',       color: '#6b7280' },
+              { key: 'In Progress', label: 'Active',      color: '#2563eb' },
+              { key: 'Completed',   label: 'Done',        color: '#16a34a' },
+              { key: 'Delayed',     label: 'Delayed',     color: '#dc2626' },
+            ].map(t => {
+              const active = taskTab === t.key;
+              const count = t.key === 'All' ? tasks.length : (taskStatusCounts[t.key] || 0);
+              return (
+                <TouchableOpacity
+                  key={t.key}
+                  style={[styles.taskTab, active && { backgroundColor: t.color, borderColor: t.color }]}
+                  activeOpacity={0.75}
+                  onPress={() => setTaskTab(t.key)}
+                >
+                  <Text style={[styles.taskTabText, active && { color: '#fff' }]}>{t.label}</Text>
+                  <View style={[styles.taskTabCount, active && { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
+                    <Text style={[styles.taskTabCountText, active && { color: '#fff' }]}>{count}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+
+        {/* Spotlight carousel — large detailed cards, snap pager */}
+        {tasks.length > 0 && (() => {
+          const filtered = (taskTab === 'All' ? tasks : tasks.filter((t: any) => t.status === taskTab)).slice(0, 8);
+          if (filtered.length === 0) {
+            return (
+              <View style={styles.taskSpotEmpty}>
+                <Ionicons name="checkmark-done-circle-outline" size={36} color={colors.gray300} />
+                <Text style={styles.taskSpotEmptyText}>No tasks in this filter</Text>
+              </View>
             );
-          })
+          }
+          return (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              decelerationRate="fast"
+              snapToInterval={240}
+              snapToAlignment="start"
+              contentContainerStyle={styles.taskSpotRow}
+            >
+              {filtered.map((task: any) => {
+                const pColor = priorityColor(task.priority);
+                const chip = dueChip(task);
+                const initial = taskInitial(task);
+                return (
+                  <TouchableOpacity
+                    key={task.id}
+                    style={[styles.taskSpot, { borderColor: pColor + '30' }]}
+                    activeOpacity={0.85}
+                    onPress={() =>
+                      navigation.getParent()?.navigate('Tasks', {
+                        screen: 'TaskDetail',
+                        params: { id: task.id },
+                      })
+                    }
+                  >
+                    {/* compact top: avatar + title + arrow */}
+                    <View style={styles.taskSpotTitleRow}>
+                      <View style={[styles.taskSpotAvatar, { backgroundColor: pColor + '18', borderColor: pColor + '50' }]}>
+                        <Text style={[styles.taskSpotAvatarText, { color: pColor }]}>{initial}</Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.taskSpotTitle} numberOfLines={1}>{task.title}</Text>
+                        <Text style={styles.taskSpotSub} numberOfLines={1}>
+                          {task.employee_name || task.customer_name || 'Unassigned'}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={14} color={colors.gray400} />
+                    </View>
+
+                    {/* compact pill row */}
+                    <View style={styles.taskSpotPills}>
+                      <View style={[styles.taskSpotPriority, { backgroundColor: pColor + '15' }]}>
+                        <View style={[styles.taskSpotPriorityDot, { backgroundColor: pColor }]} />
+                        <Text style={[styles.taskSpotPriorityText, { color: pColor }]}>{(task.priority || 'Normal').toUpperCase()}</Text>
+                      </View>
+                      <View style={[styles.taskSpotDue, { backgroundColor: chip.bg }]}>
+                        <Ionicons name={chip.icon} size={9} color={chip.fg} />
+                        <Text style={[styles.taskSpotDueText, { color: chip.fg }]}>{chip.text}</Text>
+                      </View>
+                      <StatusBadge status={task.status} />
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          );
+        })()}
+
+        {tasks.length === 0 && (
+          <View style={styles.taskEmptyCard}>
+            <View style={styles.taskEmptyIcon}>
+              <Ionicons name="clipboard-outline" size={28} color={colors.primary} />
+            </View>
+            <Text style={styles.taskEmptyTitle}>Start your workflow</Text>
+            <Text style={styles.taskEmptyDesc}>Create tasks to track work for your team</Text>
+            <TouchableOpacity
+              style={styles.taskEmptyBtn}
+              activeOpacity={0.85}
+              onPress={() => openCreate('Tasks', 'TaskForm')}
+            >
+              <Ionicons name="add-circle-outline" size={16} color="#ffffff" />
+              <Text style={styles.taskEmptyBtnText}>Create First Task</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
+
+      {/* Quotations — fresh horizontal carousel design */}
+      {(() => {
+        const sortedQuotes = [...quotations].sort((a: any, b: any) => (b.quotation_date || '').localeCompare(a.quotation_date || ''));
+        const statusCounts: Record<string, number> = {};
+        sortedQuotes.forEach((q: any) => { statusCounts[q.status] = (statusCounts[q.status] || 0) + 1; });
+        const totalQuoted = sortedQuotes.reduce((s: number, q: any) => s + (Number(q.total) || 0), 0);
+        const accepted = statusCounts['Accepted'] || 0;
+        const pending = statusCounts['Sent'] || 0;
+        const draft = statusCounts['Draft'] || 0;
+        const conversionPct = sortedQuotes.length > 0 ? Math.round((accepted / sortedQuotes.length) * 100) : 0;
+        const recentQuotes = sortedQuotes.slice(0, 8);
+
+        const statusMeta: Record<string, { color: string; bg: string; icon: any }> = {
+          Draft:    { color: '#6b7280', bg: '#f3f4f6', icon: 'create-outline' },
+          Sent:     { color: '#2563eb', bg: '#dbeafe', icon: 'paper-plane-outline' },
+          Accepted: { color: '#059669', bg: '#d1fae5', icon: 'checkmark-circle' },
+          Rejected: { color: '#dc2626', bg: '#fee2e2', icon: 'close-circle' },
+          Expired:  { color: '#71717a', bg: '#f4f4f5', icon: 'time-outline' },
+        };
+
+        return (
+          <View style={styles.quoWrap}>
+            {/* Hero header — gradient-ish dark card */}
+            <View style={styles.quoHero}>
+              <View style={styles.quoHeroOrb1} />
+              <View style={styles.quoHeroOrb2} />
+              <View style={styles.quoHeroTopRow}>
+                <View style={styles.quoHeroBadge}>
+                  <Ionicons name="document-text" size={11} color="#fff" />
+                  <Text style={styles.quoHeroBadgeText}>QUOTATIONS</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.quoHeroAction}
+                  activeOpacity={0.85}
+                  onPress={() => openCreate('Quotations', 'QuotationForm')}
+                >
+                  <Ionicons name="add" size={14} color="#fff" />
+                  <Text style={styles.quoHeroActionText}>New Quote</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.quoHeroValueRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.quoHeroValueLabel}>Total Quoted</Text>
+                  <CurrencyText amount={totalQuoted} style={styles.quoHeroValue} />
+                </View>
+                <View style={styles.quoHeroRing}>
+                  <Text style={styles.quoHeroRingNum}>{conversionPct}%</Text>
+                  <Text style={styles.quoHeroRingLabel}>WON</Text>
+                </View>
+              </View>
+
+              {/* Mini stats pills */}
+              <View style={styles.quoMiniRow}>
+                <View style={styles.quoMini}>
+                  <View style={[styles.quoMiniDot, { backgroundColor: '#10b981' }]} />
+                  <Text style={styles.quoMiniNum}>{accepted}</Text>
+                  <Text style={styles.quoMiniLabel}>Won</Text>
+                </View>
+                <View style={styles.quoMiniSep} />
+                <View style={styles.quoMini}>
+                  <View style={[styles.quoMiniDot, { backgroundColor: '#60a5fa' }]} />
+                  <Text style={styles.quoMiniNum}>{pending}</Text>
+                  <Text style={styles.quoMiniLabel}>Sent</Text>
+                </View>
+                <View style={styles.quoMiniSep} />
+                <View style={styles.quoMini}>
+                  <View style={[styles.quoMiniDot, { backgroundColor: '#a1a1aa' }]} />
+                  <Text style={styles.quoMiniNum}>{draft}</Text>
+                  <Text style={styles.quoMiniLabel}>Draft</Text>
+                </View>
+                <View style={styles.quoMiniSep} />
+                <View style={styles.quoMini}>
+                  <View style={[styles.quoMiniDot, { backgroundColor: '#f59e0b' }]} />
+                  <Text style={styles.quoMiniNum}>{sortedQuotes.length}</Text>
+                  <Text style={styles.quoMiniLabel}>Total</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Carousel of recent quotations */}
+            {recentQuotes.length === 0 ? (
+              <View style={styles.quoEmpty}>
+                <View style={styles.quoEmptyIcon}>
+                  <Ionicons name="document-text-outline" size={26} color="#7c3aed" />
+                </View>
+                <Text style={styles.quoEmptyTitle}>No quotations yet</Text>
+                <Text style={styles.quoEmptyDesc}>Create your first quote to win new business</Text>
+                <TouchableOpacity
+                  style={styles.quoEmptyBtn}
+                  activeOpacity={0.85}
+                  onPress={() => openCreate('Quotations', 'QuotationForm')}
+                >
+                  <Ionicons name="add-circle-outline" size={15} color="#fff" />
+                  <Text style={styles.quoEmptyBtnText}>Create Quotation</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <View style={styles.quoListHead}>
+                  <Text style={styles.quoListTitle}>Recent Quotations</Text>
+                  <TouchableOpacity activeOpacity={0.7} onPress={() => navigateToTab('Quotations')} style={styles.quoListHeadLink}>
+                    <Text style={styles.quoListHeadLinkText}>View all</Text>
+                    <Ionicons name="arrow-forward" size={12} color="#7c3aed" />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.quoCarousel}
+                  decelerationRate="fast"
+                  snapToInterval={236}
+                  snapToAlignment="start"
+                >
+                  {recentQuotes.map((q: any) => {
+                    const meta = statusMeta[q.status] || statusMeta['Draft'];
+                    const initial = (q.customer_name || 'C').trim().charAt(0).toUpperCase();
+                    return (
+                      <TouchableOpacity
+                        key={q.id}
+                        style={styles.quoCard}
+                        activeOpacity={0.85}
+                        onPress={() =>
+                          navigation.getParent()?.navigate('Quotations', {
+                            screen: 'QuotationDetail',
+                            params: { id: q.id },
+                          })
+                        }
+                      >
+                        {/* Top: status ribbon */}
+                        <View style={[styles.quoCardRibbon, { backgroundColor: meta.bg }]}>
+                          <Ionicons name={meta.icon} size={11} color={meta.color} />
+                          <Text style={[styles.quoCardRibbonText, { color: meta.color }]}>
+                            {q.status}
+                          </Text>
+                        </View>
+
+                        {/* Body */}
+                        <View style={styles.quoCardBody}>
+                          <View style={styles.quoCardCustomerRow}>
+                            <View style={styles.quoCardAvatar}>
+                              <Text style={styles.quoCardAvatarText}>{initial}</Text>
+                            </View>
+                            <Text style={styles.quoCardCustomer} numberOfLines={1}>
+                              {q.customer_name || 'No customer'}
+                            </Text>
+                          </View>
+
+                          <Text style={styles.quoCardNumber}>{q.quotation_number}</Text>
+                          <Text style={styles.quoCardDate}>
+                            {(q.quotation_date || '').slice(0, 10)}
+                          </Text>
+                        </View>
+
+                        {/* Footer: amount */}
+                        <View style={styles.quoCardFooter}>
+                          <Text style={styles.quoCardAmountLabel}>AMOUNT</Text>
+                          <CurrencyText amount={q.total} style={styles.quoCardAmount} />
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+
+                  {/* "See all" trailing card */}
+                  <TouchableOpacity
+                    style={styles.quoCardMore}
+                    activeOpacity={0.85}
+                    onPress={() => navigateToTab('Quotations')}
+                  >
+                    <View style={styles.quoCardMoreIcon}>
+                      <Ionicons name="grid-outline" size={20} color="#7c3aed" />
+                    </View>
+                    <Text style={styles.quoCardMoreText}>See all{'\n'}quotations</Text>
+                    <Ionicons name="arrow-forward" size={14} color="#7c3aed" />
+                  </TouchableOpacity>
+                </ScrollView>
+              </>
+            )}
+          </View>
+        );
+      })()}
 
       <View style={{ height: 40 }} />
 
@@ -904,30 +1412,37 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     marginHorizontal: spacing.md,
     marginTop: spacing.md,
-    borderRadius: 22,
-    paddingHorizontal: spacing.md + 2,
-    paddingVertical: spacing.md + 4,
+    borderRadius: 24,
+    paddingHorizontal: spacing.md + 4,
+    paddingVertical: spacing.md + 6,
     overflow: 'hidden',
     shadowColor: colors.primary,
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
+    shadowOpacity: 0.32,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
   heroBgAccent: {
     position: 'absolute',
-    width: 160, height: 160, borderRadius: 80,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    top: -60, right: -40,
+    width: 180, height: 180, borderRadius: 90,
+    backgroundColor: 'rgba(167,139,250,0.18)',
+    top: -70, right: -50,
   },
   heroBgAccent2: {
     position: 'absolute',
-    width: 100, height: 100, borderRadius: 50,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    bottom: -30, left: -20,
+    width: 130, height: 130, borderRadius: 65,
+    backgroundColor: 'rgba(99,102,241,0.14)',
+    bottom: -50, left: -30,
   },
+  heroBgAccent3: {
+    position: 'absolute',
+    width: 60, height: 60, borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    top: 40, right: 80,
+  },
+  heroTopRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  heroGreeting: { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase' },
+  heroGreeting: { color: 'rgba(255,255,255,0.75)', fontSize: 12, fontWeight: '600', letterSpacing: 0.4 },
   heroBiz: { color: '#ffffff', fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginTop: 2 },
   heroDateChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
@@ -946,31 +1461,153 @@ const styles = StyleSheet.create({
   },
   heroAvatarText: { color: '#ffffff', fontSize: 18, fontWeight: '800' },
 
+  heroDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 16,
+    marginBottom: 14,
+  },
+  heroDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  heroRecBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  heroRecLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  heroPulseDot: {
+    width: 7, height: 7, borderRadius: 4,
+  },
+  heroSliderWrap: {
+    width: '100%',
+  },
+  heroDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+  },
+  heroDot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  heroDotActive: {
+    width: 18,
+    backgroundColor: '#ffffff',
+  },
+  heroRecLabel: {
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+  },
+  heroRecAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginTop: 6,
+    gap: 2,
+  },
+  heroRecCurrency: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 3,
+  },
+  heroRecAmount: {
+    color: '#ffffff',
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: -0.4,
+    flexShrink: 1,
+  },
+  heroMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 10,
+  },
+  heroMetaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 999,
+  },
+  heroMetaText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  heroRecArrow: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+  },
+
   // Quick actions
+  quickSection: {
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.lg,
+  },
+  quickHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  quickSectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.gray500,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  quickHeaderLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.gray200,
+  },
   quickRow: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.md,
-    marginTop: spacing.md,
-    gap: spacing.sm,
+    gap: 6,
   },
   quickBtn: {
     flex: 1,
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    paddingVertical: 12,
     alignItems: 'center',
     gap: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+    paddingVertical: 4,
   },
   quickIconWrap: {
-    width: 38, height: 38, borderRadius: 12,
+    width: 50, height: 50, borderRadius: 25,
     alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5,
+    overflow: 'hidden',
   },
-  quickLabel: { fontSize: 11, color: colors.gray700, fontWeight: '600' },
+  quickLabel: {
+    fontSize: 11,
+    color: colors.gray800,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
 
 
   // Bento KPI Grid
@@ -1081,6 +1718,228 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: fontSize.md, fontWeight: '700', color: colors.text, marginBottom: spacing.sm },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   viewAll: { fontSize: fontSize.sm, color: colors.accent, fontWeight: '600' },
+
+  // Invoice card — elegant unified
+  invCardWrap: {
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.lg,
+  },
+  invCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#d8dcec',
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  invCardHeader: {
+    marginBottom: 14,
+  },
+  invCardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  invCardTitleIcon: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: '#eef0ff',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  invCardTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.gray900,
+    letterSpacing: -0.2,
+  },
+  invCardPeriod: {
+    fontSize: 11,
+    color: colors.gray500,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  invCardFilter: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 10, paddingVertical: 6,
+    backgroundColor: '#eef0ff',
+    borderRadius: 999,
+  },
+  invCardFilterText: {
+    fontSize: 11,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  invStatsStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#f8f9ff',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#eef0ff',
+  },
+  invStatsLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.gray500,
+    letterSpacing: 1.2,
+  },
+  invStatsValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.gray900,
+    letterSpacing: -0.5,
+    marginTop: 4,
+  },
+  invStatsSub: {
+    fontSize: 11,
+    color: colors.gray600,
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  invStatsArrow: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: '#eef0ff',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  invSubHeading: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.gray500,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  invCustomersBlock: {
+    marginTop: 18,
+  },
+  invCustomersRow: {
+    flexDirection: 'row',
+    gap: 14,
+    paddingRight: 4,
+  },
+  invCustomer: {
+    alignItems: 'center',
+    gap: 6,
+    width: 56,
+  },
+  invCustomerAvatar: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+  invCustomerInitial: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  invCustomerName: {
+    fontSize: 10.5,
+    color: colors.gray700,
+    fontWeight: '600',
+    textAlign: 'center',
+    width: 56,
+  },
+  invChipsBlock: {
+    marginTop: 18,
+  },
+  invChipsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 4,
+  },
+  invChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: '#f4f5f9',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#e9ebf2',
+  },
+  invChipText: {
+    fontSize: 11.5,
+    color: colors.gray700,
+    fontWeight: '700',
+  },
+  invChipCount: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 999,
+    backgroundColor: '#e2e5ee',
+    minWidth: 18,
+    alignItems: 'center',
+  },
+  invChipCountText: {
+    fontSize: 10,
+    color: colors.gray700,
+    fontWeight: '800',
+  },
+  invListBlock: {
+    marginTop: 14,
+  },
+  invListEmpty: {
+    alignItems: 'center',
+    paddingVertical: 22,
+    gap: 8,
+  },
+  invListEmptyText: {
+    color: colors.gray500,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  invRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f8',
+  },
+  invRowAvatar: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  invRowInitial: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  invRowCustomer: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray900,
+    letterSpacing: -0.2,
+  },
+  invRowMeta: {
+    fontSize: 11,
+    color: colors.gray500,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  invRowAmount: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.gray900,
+  },
+  invFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    marginTop: 8,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f8',
+  },
+  invFooterText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
 
   // Invoice creative section
   invHero: {
@@ -1201,6 +2060,444 @@ const styles = StyleSheet.create({
   listSub: { fontSize: fontSize.sm, color: colors.gray500, marginTop: 2 },
   listAmount: { fontSize: fontSize.md, fontWeight: '700', color: colors.text, marginBottom: 4 },
 
+  // Tasks — modern board
+  taskWrap: {
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.lg,
+  },
+  taskHero: {
+    backgroundColor: '#1e1b4b',
+    borderRadius: 22,
+    padding: 18,
+    overflow: 'hidden',
+    marginBottom: 16,
+    shadowColor: '#1e1b4b',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  taskHeroBgOrb1: {
+    position: 'absolute',
+    width: 140, height: 140, borderRadius: 70,
+    backgroundColor: 'rgba(167,139,250,0.22)',
+    top: -50, right: -30,
+  },
+  taskHeroBgOrb2: {
+    position: 'absolute',
+    width: 90, height: 90, borderRadius: 45,
+    backgroundColor: 'rgba(99,102,241,0.20)',
+    bottom: -30, left: -20,
+  },
+  taskHeroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  taskHeroBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 9, paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  taskHeroBadgeText: { fontSize: 9.5, fontWeight: '800', color: '#fff', letterSpacing: 1 },
+  taskHeroValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  taskHeroLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+  },
+  taskHeroTitle: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+  },
+  taskHeroSub: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 3,
+  },
+  taskHeroActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+  },
+  taskHeroBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    backgroundColor: '#7c3aed',
+    borderRadius: 999,
+  },
+  taskHeroBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  taskHeroGhost: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  taskHeroGhostText: {
+    color: '#ffffff',
+    fontSize: 11.5,
+    fontWeight: '600',
+    opacity: 0.85,
+  },
+  taskHeroMiniRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.12)',
+  },
+  taskHeroMini: { flex: 1, alignItems: 'center', gap: 2 },
+  taskHeroMiniDot: { width: 6, height: 6, borderRadius: 3, marginBottom: 2 },
+  taskHeroMiniNum: { fontSize: 15, fontWeight: '800', color: '#fff' },
+  taskHeroMiniLabel: { fontSize: 9.5, color: 'rgba(255,255,255,0.55)', fontWeight: '600', letterSpacing: 0.4 },
+  taskHeroMiniSep: { width: 1, height: 22, backgroundColor: 'rgba(255,255,255,0.1)' },
+  taskRingWrap: {
+    marginLeft: 12,
+  },
+  taskRingOuter: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: 'rgba(124,58,237,0.2)',
+    borderWidth: 3,
+    borderColor: '#a78bfa',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  taskRingInner: {
+    alignItems: 'center', justifyContent: 'center',
+  },
+  taskRingPct: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  taskRingLabel: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+
+  taskBoardRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingRight: 4,
+  },
+  // Spotlight carousel
+  taskTabRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 4,
+    marginBottom: 12,
+  },
+  taskTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: '#f4f5f9',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#e9ebf2',
+  },
+  taskTabText: {
+    fontSize: 11.5,
+    color: colors.gray700,
+    fontWeight: '700',
+  },
+  taskTabCount: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 999,
+    backgroundColor: '#e2e5ee',
+    minWidth: 18,
+    alignItems: 'center',
+  },
+  taskTabCountText: {
+    fontSize: 10,
+    color: colors.gray700,
+    fontWeight: '800',
+  },
+  taskSpotRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingRight: 4,
+    paddingBottom: 4,
+    paddingTop: 2,
+  },
+  taskSpot: {
+    width: 230,
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 10,
+    gap: 8,
+    borderWidth: 1,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  taskSpotTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  taskSpotAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.2,
+  },
+  taskSpotAvatarText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  taskSpotTitle: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: colors.gray900,
+    lineHeight: 16,
+    letterSpacing: -0.1,
+  },
+  taskSpotSub: {
+    fontSize: 10.5,
+    color: colors.gray500,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  taskSpotPills: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  taskSpotPriority: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 999,
+  },
+  taskSpotPriorityDot: {
+    width: 5, height: 5, borderRadius: 3,
+  },
+  taskSpotPriorityText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  taskSpotDue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 999,
+  },
+  taskSpotDueText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+  },
+  taskSpotEmpty: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    gap: 6,
+  },
+  taskSpotEmptyText: {
+    fontSize: 12,
+    color: colors.gray500,
+    fontWeight: '500',
+  },
+  taskCol: {
+    width: 220,
+    backgroundColor: '#fafafa',
+    borderRadius: 18,
+    padding: 12,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#eef0f5',
+  },
+  taskColHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  taskColDot: {
+    width: 8, height: 8, borderRadius: 4,
+  },
+  taskColLabel: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray800,
+    letterSpacing: -0.1,
+  },
+  taskColCount: {
+    minWidth: 24,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+    alignItems: 'center',
+  },
+  taskColCountText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  taskColEmpty: {
+    alignItems: 'center',
+    paddingVertical: 18,
+    gap: 4,
+  },
+  taskColEmptyText: {
+    fontSize: 11,
+    color: colors.gray400,
+    fontWeight: '500',
+  },
+  taskMiniCard: {
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#eef0f5',
+  },
+  taskMiniStrip: {
+    width: 3,
+  },
+  taskMiniBody: {
+    flex: 1,
+    padding: 10,
+    gap: 8,
+  },
+  taskMiniTitle: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: colors.gray900,
+    lineHeight: 16,
+    letterSpacing: -0.1,
+  },
+  taskMiniMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  taskMiniAvatar: {
+    width: 20, height: 20, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  taskMiniAvatarText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  taskMiniMeta: {
+    flex: 1,
+    fontSize: 10.5,
+    color: colors.gray600,
+    fontWeight: '600',
+  },
+  taskMiniFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    flexWrap: 'wrap',
+  },
+  taskMiniPriority: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  taskMiniPriorityText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  taskMiniDue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  taskMiniDueText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+  },
+  taskColMore: {
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  taskColMoreText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  taskEmptyCard: {
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    paddingVertical: 26,
+    paddingHorizontal: 18,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#eef0f5',
+  },
+  taskEmptyIcon: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: '#eef0ff',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 4,
+  },
+  taskEmptyTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.gray900,
+  },
+  taskEmptyDesc: {
+    fontSize: 12,
+    color: colors.gray500,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  taskEmptyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    marginTop: 4,
+  },
+  taskEmptyBtnText: {
+    color: '#ffffff',
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+
   // Tasks — creative ticket
   priorityStrip: { width: 4, borderRadius: 2, alignSelf: 'stretch' },
   countPill: {
@@ -1258,4 +2555,192 @@ const styles = StyleSheet.create({
   dueChipText: { fontSize: 11, fontWeight: '700' },
 
   noData: { color: colors.gray400, fontSize: fontSize.sm },
+
+  // ===== Quotations section (carousel design) =====
+  quoWrap: {
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.lg,
+  },
+  quoHero: {
+    backgroundColor: '#1e1b4b',
+    borderRadius: 20,
+    padding: spacing.md,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  quoHeroOrb1: {
+    position: 'absolute',
+    top: -40, right: -40,
+    width: 140, height: 140, borderRadius: 70,
+    backgroundColor: '#7c3aed',
+    opacity: 0.35,
+  },
+  quoHeroOrb2: {
+    position: 'absolute',
+    bottom: -50, left: -30,
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: '#a855f7',
+    opacity: 0.18,
+  },
+  quoHeroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  quoHeroBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 9, paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  quoHeroBadgeText: { fontSize: 9.5, fontWeight: '800', color: '#fff', letterSpacing: 1 },
+  quoHeroAction: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#7c3aed',
+    paddingHorizontal: 11, paddingVertical: 6,
+    borderRadius: 999,
+  },
+  quoHeroActionText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  quoHeroValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.md,
+  },
+  quoHeroValueLabel: { fontSize: 11, color: 'rgba(255,255,255,0.6)', fontWeight: '600', letterSpacing: 0.5 },
+  quoHeroValue: { fontSize: 26, fontWeight: '800', color: '#fff', marginTop: 2 },
+  quoHeroRing: {
+    width: 64, height: 64, borderRadius: 32,
+    borderWidth: 3, borderColor: '#a855f7',
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(124,58,237,0.2)',
+  },
+  quoHeroRingNum: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  quoHeroRingLabel: { fontSize: 8.5, fontWeight: '800', color: 'rgba(255,255,255,0.7)', letterSpacing: 0.8 },
+  quoMiniRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.12)',
+  },
+  quoMini: { flex: 1, alignItems: 'center', gap: 2 },
+  quoMiniDot: { width: 6, height: 6, borderRadius: 3, marginBottom: 2 },
+  quoMiniNum: { fontSize: 15, fontWeight: '800', color: '#fff' },
+  quoMiniLabel: { fontSize: 9.5, color: 'rgba(255,255,255,0.55)', fontWeight: '600', letterSpacing: 0.4 },
+  quoMiniSep: { width: 1, height: 22, backgroundColor: 'rgba(255,255,255,0.1)' },
+
+  quoListHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+    paddingHorizontal: 2,
+  },
+  quoListTitle: { fontSize: 14, fontWeight: '800', color: colors.text, letterSpacing: -0.2 },
+  quoListHeadLink: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  quoListHeadLinkText: { fontSize: 12, fontWeight: '700', color: '#7c3aed' },
+
+  quoCarousel: {
+    paddingRight: spacing.md,
+    gap: spacing.sm,
+  },
+  quoCard: {
+    width: 220,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  quoCardRibbon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  quoCardRibbonText: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.3 },
+  quoCardBody: {
+    padding: spacing.md,
+    gap: 6,
+  },
+  quoCardCustomerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  quoCardAvatar: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: '#f3e8ff',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  quoCardAvatarText: { fontSize: 12, fontWeight: '800', color: '#7c3aed' },
+  quoCardCustomer: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.text },
+  quoCardNumber: { fontSize: 12, fontWeight: '700', color: colors.gray700 },
+  quoCardDate: { fontSize: 11, color: colors.gray500, fontWeight: '500' },
+  quoCardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray100,
+    backgroundColor: '#faf5ff',
+  },
+  quoCardAmountLabel: { fontSize: 9.5, fontWeight: '800', color: '#7c3aed', letterSpacing: 0.6 },
+  quoCardAmount: { fontSize: 15, fontWeight: '800', color: '#1e1b4b' },
+
+  quoCardMore: {
+    width: 150,
+    backgroundColor: '#faf5ff',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#e9d5ff',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.md,
+    gap: 8,
+  },
+  quoCardMoreIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: '#f3e8ff',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  quoCardMoreText: { fontSize: 12, fontWeight: '700', color: '#7c3aed', textAlign: 'center', lineHeight: 16 },
+
+  quoEmpty: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: spacing.lg,
+    alignItems: 'center',
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+  },
+  quoEmptyIcon: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: '#f3e8ff',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  quoEmptyTitle: { fontSize: 15, fontWeight: '800', color: colors.text },
+  quoEmptyDesc: { fontSize: 12.5, color: colors.gray500, marginTop: 4, marginBottom: spacing.md, textAlign: 'center' },
+  quoEmptyBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#7c3aed',
+    paddingHorizontal: 16, paddingVertical: 9,
+    borderRadius: 999,
+  },
+  quoEmptyBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
 });

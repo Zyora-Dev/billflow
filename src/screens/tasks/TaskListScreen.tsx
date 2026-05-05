@@ -295,30 +295,27 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
             {/* Hero card */}
             <View style={s.hero}>
               <View style={s.heroAccent} />
+              <View style={s.heroAccent2} />
               <View style={s.heroTopRow}>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={s.heroEyebrow}>{tab === 'order' ? 'Orders' : 'Service Tasks'}</Text>
                   <Text style={s.heroValue}>{stats.total}</Text>
                   <Text style={s.heroSub}>
                     {stats.pending} pending • {stats.completed} done
                   </Text>
                 </View>
-                <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                  <TouchableOpacity
-                    style={s.heroPill}
-                    onPress={() => {
-                      const idx = PERIODS.findIndex(p => p.value === period);
-                      setPeriod(PERIODS[(idx + 1) % PERIODS.length].value);
-                    }}
-                    activeOpacity={0.85}
-                  >
-                    <Ionicons name="calendar-outline" size={11} color="#fff" />
-                    <Text style={s.heroPillText}>{PERIODS.find(p => p.value === period)?.label}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={s.heroIcon} onPress={exportPDF} disabled={exporting} activeOpacity={0.8}>
-                    {exporting ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="download-outline" size={16} color="#fff" />}
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  style={s.heroPill}
+                  onPress={() => {
+                    const idx = PERIODS.findIndex(p => p.value === period);
+                    setPeriod(PERIODS[(idx + 1) % PERIODS.length].value);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="calendar-outline" size={13} color="#fff" />
+                  <Text style={s.heroPillText}>{PERIODS.find(p => p.value === period)?.label}</Text>
+                  <Ionicons name="chevron-down" size={13} color="#fff" />
+                </TouchableOpacity>
               </View>
 
               {tab === 'order' && stats.orderValue > 0 && (
@@ -371,19 +368,32 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
             {/* Search */}
             <View style={s.searchWrap}>
               <View style={s.searchRow}>
-                <Ionicons name="search" size={16} color={colors.gray400} />
+                <Ionicons name="search" size={18} color={colors.primary} />
                 <TextInput
                   style={s.searchInput}
                   value={search}
                   onChangeText={setSearch}
-                  placeholder={`Search ${tab === 'order' ? 'orders' : 'tasks'}...`}
-                  placeholderTextColor={colors.placeholder}
+                  placeholder={`Type to search ${tab === 'order' ? 'orders' : 'tasks'}...`}
+                  placeholderTextColor={colors.gray400}
                 />
+                {search.trim().length > 0 ? (
+                  <View style={s.countChip}>
+                    <Text style={s.countChipText}>{filtered.length}</Text>
+                  </View>
+                ) : null}
                 {search ? (
-                  <TouchableOpacity onPress={() => setSearch('')}>
-                    <Ionicons name="close-circle" size={16} color={colors.gray400} />
+                  <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={18} color={colors.gray400} />
                   </TouchableOpacity>
                 ) : null}
+                <View style={s.searchDivider} />
+                <TouchableOpacity style={s.searchActionBtn} activeOpacity={0.8} onPress={exportPDF} disabled={exporting}>
+                  {exporting ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Ionicons name="download-outline" size={17} color={colors.primary} />
+                  )}
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -471,87 +481,112 @@ const s = StyleSheet.create({
   // Hero
   hero: {
     backgroundColor: colors.primary,
-    margin: spacing.md,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
     borderRadius: 20,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
     overflow: 'hidden',
+    shadowColor: colors.primary, shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4,
   },
   heroAccent: {
     position: 'absolute',
-    width: 180, height: 180, borderRadius: 90,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    top: -60, right: -50,
+    width: 140, height: 140, borderRadius: 70,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    top: -55, right: -35,
   },
-  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  heroEyebrow: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
-  heroValue: { color: '#fff', fontSize: 34, fontWeight: '900', marginTop: 2, lineHeight: 38 },
-  heroSub: { color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 2, fontWeight: '600' },
+  heroAccent2: {
+    position: 'absolute',
+    width: 90, height: 90, borderRadius: 45,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    bottom: -30, left: -20,
+  },
+  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.sm },
+  heroEyebrow: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
+  heroValue: { color: '#fff', fontSize: 22, fontWeight: '800', letterSpacing: -0.4, marginTop: 4 },
+  heroSub: { color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: 2, fontWeight: '600' },
   heroPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 10, paddingVertical: 5,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 10, paddingVertical: 6,
     borderRadius: 999,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
   },
-  heroPillText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  heroPillText: { color: '#fff', fontSize: 10.5, fontWeight: '700' },
   heroIcon: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    width: 32, height: 32, borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
   },
   heroOrderTotal: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.1)',
     paddingHorizontal: 12, paddingVertical: 8,
     borderRadius: 10,
-    marginTop: 12,
+    marginTop: spacing.sm + 2,
   },
   heroOrderLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
   heroOrderValue: { color: '#fff', fontSize: 14, fontWeight: '800' },
 
   kpiRow: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 12,
-    marginTop: 12,
-    paddingVertical: 10,
+    marginTop: spacing.sm + 2,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.18)',
   },
-  kpi: { flex: 1, alignItems: 'center', borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.1)' },
-  kpiLabel: { color: 'rgba(255,255,255,0.65)', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
-  kpiVal: { fontSize: 16, fontWeight: '900', marginTop: 1 },
+  kpi: { flex: 1, alignItems: 'center', borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.18)' },
+  kpiLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 9.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  kpiVal: { fontSize: 15, fontWeight: '800', marginTop: 2 },
 
   // Tabs
-  tabRow: { flexDirection: 'row', gap: 8, paddingHorizontal: spacing.md },
+  tabRow: { flexDirection: 'row', gap: 8, paddingHorizontal: spacing.md, marginTop: spacing.md },
   tabPill: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-    paddingVertical: 9,
-    borderRadius: 10,
+    paddingVertical: 10,
+    borderRadius: 12,
     backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: colors.gray200,
+    borderColor: '#eef0f5',
   },
   tabPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   tabPillText: { fontSize: 13, fontWeight: '700', color: colors.gray600 },
   tabPillTextActive: { color: '#fff' },
 
   // Search
-  searchWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.sm + 2 },
+  searchWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
   searchRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingHorizontal: 12, paddingVertical: 9,
-    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 11,
+    gap: 10,
+    borderWidth: 1.5, borderColor: colors.primary + '30',
+    shadowColor: colors.primary, shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 2 },
   },
-  searchInput: { flex: 1, fontSize: 14, color: colors.text, paddingVertical: 0 },
+  searchInput: { flex: 1, fontSize: 14, color: colors.text, paddingVertical: 0, fontWeight: '500' },
+  countChip: {
+    backgroundColor: colors.primary + '15',
+    paddingHorizontal: 8, paddingVertical: 2,
+    borderRadius: 999,
+    minWidth: 24, alignItems: 'center',
+  },
+  countChipText: { fontSize: 11, color: colors.primary, fontWeight: '800' },
+  searchDivider: { width: 1, height: 22, backgroundColor: colors.gray200 },
+  searchActionBtn: {
+    width: 32, height: 32, borderRadius: 10,
+    backgroundColor: colors.primary + '10',
+    alignItems: 'center', justifyContent: 'center',
+  },
 
   // Chips
-  chipScroll: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, gap: 6 },
+  chipScroll: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4, gap: 6 },
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 12, paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: '#fff',
-    borderWidth: 1, borderColor: colors.gray200,
+    borderWidth: 1, borderColor: '#eef0f5',
   },
   chipDot: { width: 6, height: 6, borderRadius: 3 },
   chipText: { fontSize: 12, fontWeight: '700', color: colors.gray600 },
@@ -561,7 +596,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: '#fff',
-    borderWidth: 1, borderColor: colors.gray200,
+    borderWidth: 1, borderColor: '#eef0f5',
   },
   catChipText: { fontSize: 12, fontWeight: '700', color: colors.gray600 },
 
@@ -570,14 +605,14 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#fff',
     marginHorizontal: spacing.md,
-    marginBottom: 8,
-    borderRadius: 14,
+    marginBottom: 10,
+    borderRadius: 16,
     padding: 12,
-    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 5, elevation: 1,
+    borderWidth: 1, borderColor: '#eef0f5',
   },
   prioStrip: { width: 4, borderRadius: 2 },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  cardTitle: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.text },
+  cardTitle: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.gray900, letterSpacing: -0.2 },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
   statusBadgeText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
 
@@ -600,6 +635,6 @@ const s = StyleSheet.create({
     borderRadius: 27,
     backgroundColor: colors.primary,
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 10, elevation: 6,
+    shadowColor: colors.primary, shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6,
   },
 });
