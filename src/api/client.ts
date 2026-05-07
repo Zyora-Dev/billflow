@@ -3,7 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import NetInfo from '@react-native-community/netinfo';
 import { cacheGet, cacheSet, queueAdd } from '../lib/offline';
 
-const BASE_URL = 'https://billflow.spectratechnologies.solutions';
+const BASE_URL = 'https://books.spectrasaas.in';
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -17,6 +17,11 @@ api.interceptors.request.use(async (config) => {
     const token = await SecureStore.getItemAsync('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    // Send stealth header when private mode is active
+    const stealthActive = await SecureStore.getItemAsync('stealth_active');
+    if (stealthActive === '1') {
+      config.headers['X-Stealth'] = '1';
     }
   } catch {}
   return config;

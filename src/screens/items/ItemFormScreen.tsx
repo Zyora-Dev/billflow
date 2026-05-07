@@ -14,6 +14,7 @@ export default function ItemFormScreen({ route, navigation }: { route: any; navi
     item_name: '', type: 'goods', unit: 'Nos', sale_price: '', offer_price: '',
     tax_rate: '18', stock: '0', description: '', model_number: '',
     stock_alert_enabled: false, stock_alert_qty: '5', hsn_code: '',
+    purchase_unit: '', conversion_factor: '', purchase_price: '',
   });
   const [orgId, setOrgId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,6 +31,8 @@ export default function ItemFormScreen({ route, navigation }: { route: any; navi
           description: i.description || '', model_number: i.model_number || '',
           stock_alert_enabled: i.stock_alert_enabled || false,
           stock_alert_qty: String(i.stock_alert_qty || '5'), hsn_code: i.hsn_code || '',
+          purchase_unit: i.purchase_unit || '', conversion_factor: i.conversion_factor != null ? String(i.conversion_factor) : '',
+          purchase_price: i.purchase_price != null ? String(i.purchase_price) : '',
         });
       }).catch(() => {});
     }
@@ -48,6 +51,9 @@ export default function ItemFormScreen({ route, navigation }: { route: any; navi
         tax_rate: parseFloat(form.tax_rate) || 0,
         stock: parseInt(form.stock) || 0,
         stock_alert_qty: parseInt(form.stock_alert_qty) || 0,
+        purchase_unit: form.purchase_unit || null,
+        conversion_factor: form.conversion_factor ? parseFloat(form.conversion_factor) : null,
+        purchase_price: form.purchase_price ? parseFloat(form.purchase_price) : null,
         org_id: orgId,
       };
       if (editId) await api.put(`/api/items/${editId}`, body);
@@ -81,7 +87,7 @@ export default function ItemFormScreen({ route, navigation }: { route: any; navi
           <Text style={styles.label}>Model Number</Text>
           <TextInput style={styles.input} value={form.model_number} onChangeText={v => update('model_number', v)} placeholder="Model" placeholderTextColor={colors.placeholder} />
 
-          <Text style={styles.label}>Unit</Text>
+          <Text style={styles.label}>Sale Unit</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.sm }}>
             {UNITS.map(u => (
               <TouchableOpacity key={u} style={[styles.chip, form.unit === u && styles.chipActive]} onPress={() => update('unit', u)}>
@@ -89,6 +95,45 @@ export default function ItemFormScreen({ route, navigation }: { route: any; navi
               </TouchableOpacity>
             ))}
           </ScrollView>
+
+          <Text style={styles.label}>Purchase Unit <Text style={{ fontWeight: '400', color: colors.gray500 }}>(if different)</Text></Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.sm }}>
+            <TouchableOpacity style={[styles.chip, !form.purchase_unit && styles.chipActive]} onPress={() => update('purchase_unit', '')}>
+              <Text style={[styles.chipText, !form.purchase_unit && styles.chipTextActive]}>Same</Text>
+            </TouchableOpacity>
+            {UNITS.map(u => (
+              <TouchableOpacity key={u} style={[styles.chip, form.purchase_unit === u && styles.chipActive]} onPress={() => update('purchase_unit', u)}>
+                <Text style={[styles.chipText, form.purchase_unit === u && styles.chipTextActive]}>{u}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {form.purchase_unit ? (
+            <>
+              <View style={styles.row}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Conversion Factor</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ fontSize: fontSize.xs, color: colors.gray500 }}>1 {form.purchase_unit} =</Text>
+                    <TextInput style={[styles.input, { flex: 1 }]} value={form.conversion_factor} onChangeText={v => update('conversion_factor', v)} placeholder="e.g. 24" placeholderTextColor={colors.placeholder} keyboardType="decimal-pad" />
+                    <Text style={{ fontSize: fontSize.xs, color: colors.gray500 }}>{form.unit}</Text>
+                  </View>
+                </View>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>Purchase Price (per {form.purchase_unit})</Text>
+                <TextInput style={styles.input} value={form.purchase_price} onChangeText={v => update('purchase_price', v)} placeholder="0.00" placeholderTextColor={colors.placeholder} keyboardType="decimal-pad" />
+              </View>
+              {form.conversion_factor && parseFloat(form.conversion_factor) > 0 && (
+                <View style={{ backgroundColor: '#eff6ff', borderRadius: borderRadius.sm, padding: spacing.sm, marginTop: spacing.xs }}>
+                  <Text style={{ fontSize: fontSize.xs, color: '#2563eb' }}>
+                    1 {form.purchase_unit} = {form.conversion_factor} {form.unit}
+                    {form.purchase_price && parseFloat(form.purchase_price) > 0 ? ` · Cost per ${form.unit}: ₹${(parseFloat(form.purchase_price) / parseFloat(form.conversion_factor)).toFixed(2)}` : ''}
+                  </Text>
+                </View>
+              )}
+            </>
+          ) : null}
 
           <View style={styles.row}>
             <View style={{ flex: 1 }}>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, KeyboardAvoidingView, Platform, Switch } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as SecureStore from 'expo-secure-store';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
@@ -52,6 +53,11 @@ export default function OnboardingScreen({ navigation, route }: { navigation: an
       Object.entries(form).forEach(([k, v]) => fd.append(k, String(v)));
       if (logo) {
         fd.append('business_logo', { uri: logo.uri, name: 'logo.jpg', type: 'image/jpeg' } as any);
+      }
+      // Mark business as stealth if creating in private mode
+      const stealthActive = await SecureStore.getItemAsync('stealth_active');
+      if (stealthActive === '1' && !isEdit) {
+        fd.append('is_stealth', 'true');
       }
       if (isEdit) {
         await api.put(`/api/business/${editId}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });

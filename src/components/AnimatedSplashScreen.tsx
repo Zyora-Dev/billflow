@@ -64,7 +64,7 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
 
 const LOGO_SIZE = Math.min(width * 0.42, 180);
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'space-between', paddingTop: 140 },
+  container: { flex: 1, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'space-between', paddingTop: 140 },
   center: { alignItems: 'center', justifyContent: 'center' },
   logo: { width: LOGO_SIZE, height: LOGO_SIZE },
   ring: {
@@ -73,8 +73,8 @@ const styles = StyleSheet.create({
     height: LOGO_SIZE,
     borderRadius: LOGO_SIZE / 2,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.45)',
+    borderColor: 'rgba(255,255,255,0.5)',
   },
   brand: { color: colors.white, fontSize: 38, fontWeight: '800', letterSpacing: 1.2, marginTop: 24 },
-  tagline: { color: 'rgba(255,255,255,0.75)', fontSize: fontSize.md, marginTop: 8, fontWeight: '500', letterSpacing: 0.4 },
+  tagline: { color: 'rgba(255,255,255,0.8)', fontSize: fontSize.md, marginTop: 8, fontWeight: '500', letterSpacing: 0.4 },
 });

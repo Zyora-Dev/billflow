@@ -62,14 +62,14 @@ function TabItem({ name, label, isFocused, onPress, onLongPress }: TabItemProps)
           <Ionicons
             name={isFocused ? filled : outlineName}
             size={22}
-            color={isFocused ? colors.primary : colors.gray400}
+            color={isFocused ? '#064e3b' : '#374151'}
           />
         </Animated.View>
         <Animated.Text
           numberOfLines={1}
           style={[
             styles.label,
-            { color: isFocused ? colors.primary : colors.gray500 },
+            { color: isFocused ? '#064e3b' : '#374151' },
           ]}
         >
           {label}

@@ -1,10 +1,10 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../auth/AuthContext';
-import api from '../api/client';
+import api, { BASE_URL } from '../api/client';
 import { colors } from '../theme';
 import { useNetwork } from './NetworkProvider';
 
@@ -50,6 +50,7 @@ export default function AppHeader({
   const { online, pendingCount, flushing } = useNetwork();
   const navigation = useNavigation<any>();
   const [bizName, setBizName] = useState<string>('');
+  const [bizLogo, setBizLogo] = useState<string | null>(null);
 
   const tapCount = useRef(0);
   const tapTimer = useRef<any>(null);
@@ -58,8 +59,9 @@ export default function AppHeader({
     (async () => {
       try {
         const r = await api.get('/api/business');
-        const name = r.data?.[0]?.business_name;
-        if (name) setBizName(name);
+        const biz = r.data?.[0];
+        if (biz?.business_name) setBizName(biz.business_name);
+        if (biz?.business_logo) setBizLogo(biz.business_logo);
       } catch {}
     })();
   }, []);
@@ -88,7 +90,7 @@ export default function AppHeader({
   }, [bizName, user]);
 
   const baseColor = stealthActive ? '#0e3d2c' : colors.primary;
-  const lightColor = stealthActive ? '#15553e' : '#2d2d6b';
+  const lightColor = stealthActive ? '#15553e' : colors.primaryLight;
 
   return (
     <View>
@@ -147,6 +149,8 @@ export default function AppHeader({
             >
               {stealthActive ? (
                 <Ionicons name="shield-checkmark" size={16} color={colors.white} />
+              ) : bizLogo ? (
+                <Image source={{ uri: `${BASE_URL}/assets/logos/${bizLogo}` }} style={s.avatarImg} />
               ) : (
                 <Text style={s.avatarText}>{initial}</Text>
               )}
@@ -273,11 +277,17 @@ const s = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#4f46e5',
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.25)',
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   avatarText: {
     color: colors.white,
@@ -296,7 +306,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#1a1a40',
+    borderColor: colors.primary,
   },
   bellBadgeText: {
     color: colors.white,
@@ -316,7 +326,7 @@ const s = StyleSheet.create({
     width: 3,
     height: 18,
     borderRadius: 2,
-    backgroundColor: '#a78bfa',
+    backgroundColor: colors.primaryLight,
   },
   title: {
     color: colors.white,

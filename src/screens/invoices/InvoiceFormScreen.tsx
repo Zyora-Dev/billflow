@@ -6,6 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
+import { useAuth } from '../../auth/AuthContext';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import DateInput from '../../components/DateInput';
 
@@ -24,6 +25,8 @@ interface LineItem {
 
 export default function InvoiceFormScreen({ route, navigation }: { route: any; navigation: any }) {
   const toast = useToast();
+  const { user, stealthActive } = useAuth();
+  const isPrivate = stealthActive || !!user?.is_private;
   const editId = route.params?.id;
   const [orgId, setOrgId] = useState('');
   const [customers, setCustomers] = useState<any[]>([]);
@@ -96,9 +99,9 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
   const addItem = (item: any) => {
     setLineItems(prev => [...prev, {
       item_id: item.id, item_name: item.item_name, description: item.description || '',
-      hsn_code: item.hsn_code || '',
+      hsn_code: isPrivate ? '' : (item.hsn_code || ''),
       unit: item.unit || 'Nos', qty: 1, rate: item.sale_price || 0,
-      discount_percent: 0, tax_rate: item.tax_rate || 0, amount: 0,
+      discount_percent: 0, tax_rate: isPrivate ? 0 : (item.tax_rate || 0), amount: 0,
     }]);
     setShowItemPicker(false);
   };
@@ -264,12 +267,14 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
                   </View>
                 </View>
               )}
+              {!isPrivate && (
               <View style={styles.row}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.miniLabel}>HSN Code</Text>
                   <TextInput style={styles.miniInput} value={li.hsn_code} onChangeText={v => updateLine(idx, 'hsn_code', v)} placeholder="e.g. 8471" placeholderTextColor={colors.placeholder} />
                 </View>
               </View>
+              )}
               <View style={styles.row}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.miniLabel}>Qty</Text>
@@ -279,10 +284,12 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
                   <Text style={styles.miniLabel}>Rate</Text>
                   <TextInput style={styles.miniInput} value={String(li.rate)} onChangeText={v => updateLine(idx, 'rate', parseFloat(v) || 0)} keyboardType="decimal-pad" />
                 </View>
+                {!isPrivate && (
                 <View style={{ flex: 1, marginLeft: 8 }}>
                   <Text style={styles.miniLabel}>Tax %</Text>
                   <TextInput style={styles.miniInput} value={String(li.tax_rate)} onChangeText={v => updateLine(idx, 'tax_rate', parseFloat(v) || 0)} keyboardType="decimal-pad" />
                 </View>
+                )}
               </View>
               <Text style={styles.lineAmt}>Amount: ₹{calcLineAmount(li).toFixed(2)}</Text>
             </View>
@@ -295,7 +302,7 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
           <TextInput style={[styles.input, { height: 60, textAlignVertical: 'top' }]} value={notes} onChangeText={setNotes} multiline placeholder="Optional notes" placeholderTextColor={colors.placeholder} />
 
           <View style={styles.sumRow}><Text style={styles.sumLabel}>Subtotal</Text><Text style={styles.sumVal}>₹{subtotal.toFixed(2)}</Text></View>
-          <View style={styles.sumRow}><Text style={styles.sumLabel}>Tax</Text><Text style={styles.sumVal}>₹{taxAmount.toFixed(2)}</Text></View>
+          {!isPrivate && <View style={styles.sumRow}><Text style={styles.sumLabel}>Tax</Text><Text style={styles.sumVal}>₹{taxAmount.toFixed(2)}</Text></View>}
           {discAmt > 0 && (
             <View style={styles.sumRow}>
               <Text style={styles.sumLabel}>Discount</Text>
@@ -414,7 +421,30 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
             <Ionicons name="create-outline" size={20} color={colors.primary} />
             <Text style={styles.customItemText}>Add Custom Item (not in catalog)</Text>
           </TouchableOpacity>
-          <TextInput style={styles.modalSearch} value={itemSearch} onChangeText={setItemSearch} placeholder="Search items..." placeholderTextColor={colors.placeholder} />
+          <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: spacing.md, marginBottom: 8 }}>
+            <TextInput
+              style={[styles.modalSearch, { flex: 1, marginHorizontal: 0, marginBottom: 0 }]}
+              value={itemSearch}
+              onChangeText={setItemSearch}
+              placeholder="Search items..."
+              placeholderTextColor={colors.placeholder}
+            />
+            <TextInput
+              style={[styles.modalSearch, { width: 130, marginHorizontal: 0, marginBottom: 0 }]}
+              placeholder="Scan barcode..."
+              placeholderTextColor={colors.placeholder}
+              returnKeyType="done"
+              onSubmitEditing={async (e) => {
+                const barcode = e.nativeEvent.text.trim();
+                if (!barcode || !orgId) return;
+                try {
+                  const res = await api.get(`/api/items/lookup/barcode?barcode=${encodeURIComponent(barcode)}&org_id=${orgId}`);
+                  if (res.data) { addItem(res.data); }
+                  else { Alert.alert('Not Found', 'No item found for this barcode'); }
+                } catch { Alert.alert('Not Found', 'No item found for this barcode'); }
+              }}
+            />
+          </View>
           <FlatList
             data={filteredItems}
             keyExtractor={i => String(i.id)}

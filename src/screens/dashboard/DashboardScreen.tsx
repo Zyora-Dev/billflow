@@ -1095,7 +1095,7 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
             {recentQuotes.length === 0 ? (
               <View style={styles.quoEmpty}>
                 <View style={styles.quoEmptyIcon}>
-                  <Ionicons name="document-text-outline" size={26} color="#7c3aed" />
+                  <Ionicons name="document-text-outline" size={26} color="#059669" />
                 </View>
                 <Text style={styles.quoEmptyTitle}>No quotations yet</Text>
                 <Text style={styles.quoEmptyDesc}>Create your first quote to win new business</Text>
@@ -1114,7 +1114,7 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
                   <Text style={styles.quoListTitle}>Recent Quotations</Text>
                   <TouchableOpacity activeOpacity={0.7} onPress={() => navigateToTab('Quotations')} style={styles.quoListHeadLink}>
                     <Text style={styles.quoListHeadLinkText}>View all</Text>
-                    <Ionicons name="arrow-forward" size={12} color="#7c3aed" />
+                    <Ionicons name="arrow-forward" size={12} color="#059669" />
                   </TouchableOpacity>
                 </View>
 
@@ -1182,10 +1182,10 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
                     onPress={() => navigateToTab('Quotations')}
                   >
                     <View style={styles.quoCardMoreIcon}>
-                      <Ionicons name="grid-outline" size={20} color="#7c3aed" />
+                      <Ionicons name="grid-outline" size={20} color="#059669" />
                     </View>
                     <Text style={styles.quoCardMoreText}>See all{'\n'}quotations</Text>
-                    <Ionicons name="arrow-forward" size={14} color="#7c3aed" />
+                    <Ionicons name="arrow-forward" size={14} color="#059669" />
                   </TouchableOpacity>
                 </ScrollView>
               </>
@@ -2066,12 +2066,12 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   taskHero: {
-    backgroundColor: '#1e1b4b',
+    backgroundColor: '#064e3b',
     borderRadius: 22,
     padding: 18,
     overflow: 'hidden',
     marginBottom: 16,
-    shadowColor: '#1e1b4b',
+    shadowColor: '#064e3b',
     shadowOpacity: 0.25,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
@@ -2079,13 +2079,13 @@ const styles = StyleSheet.create({
   taskHeroBgOrb1: {
     position: 'absolute',
     width: 140, height: 140, borderRadius: 70,
-    backgroundColor: 'rgba(167,139,250,0.22)',
+    backgroundColor: 'rgba(52,211,153,0.22)',
     top: -50, right: -30,
   },
   taskHeroBgOrb2: {
     position: 'absolute',
     width: 90, height: 90, borderRadius: 45,
-    backgroundColor: 'rgba(99,102,241,0.20)',
+    backgroundColor: 'rgba(16,185,129,0.20)',
     bottom: -30, left: -20,
   },
   taskHeroTopRow: {
@@ -2136,7 +2136,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 11,
     paddingVertical: 6,
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#047857',
     borderRadius: 999,
   },
   taskHeroBtnText: {
@@ -2175,9 +2175,9 @@ const styles = StyleSheet.create({
   },
   taskRingOuter: {
     width: 64, height: 64, borderRadius: 32,
-    backgroundColor: 'rgba(124,58,237,0.2)',
+    backgroundColor: 'rgba(16,185,129,0.2)',
     borderWidth: 3,
-    borderColor: '#a78bfa',
+    borderColor: '#34d399',
     alignItems: 'center', justifyContent: 'center',
   },
   taskRingInner: {
@@ -2562,7 +2562,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   quoHero: {
-    backgroundColor: '#1e1b4b',
+    backgroundColor: '#064e3b',
     borderRadius: 20,
     padding: spacing.md,
     overflow: 'hidden',
@@ -2572,14 +2572,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -40, right: -40,
     width: 140, height: 140, borderRadius: 70,
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#047857',
     opacity: 0.35,
   },
   quoHeroOrb2: {
     position: 'absolute',
     bottom: -50, left: -30,
     width: 120, height: 120, borderRadius: 60,
-    backgroundColor: '#a855f7',
+    backgroundColor: '#10b981',
     opacity: 0.18,
   },
   quoHeroTopRow: {
@@ -2597,7 +2597,7 @@ const styles = StyleSheet.create({
   quoHeroBadgeText: { fontSize: 9.5, fontWeight: '800', color: '#fff', letterSpacing: 1 },
   quoHeroAction: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#047857',
     paddingHorizontal: 11, paddingVertical: 6,
     borderRadius: 999,
   },
@@ -2611,9 +2611,9 @@ const styles = StyleSheet.create({
   quoHeroValue: { fontSize: 26, fontWeight: '800', color: '#fff', marginTop: 2 },
   quoHeroRing: {
     width: 64, height: 64, borderRadius: 32,
-    borderWidth: 3, borderColor: '#a855f7',
+    borderWidth: 3, borderColor: '#34d399',
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(124,58,237,0.2)',
+    backgroundColor: 'rgba(16,185,129,0.2)',
   },
   quoHeroRingNum: { fontSize: 16, fontWeight: '800', color: '#fff' },
   quoHeroRingLabel: { fontSize: 8.5, fontWeight: '800', color: 'rgba(255,255,255,0.7)', letterSpacing: 0.8 },
@@ -2641,7 +2641,7 @@ const styles = StyleSheet.create({
   },
   quoListTitle: { fontSize: 14, fontWeight: '800', color: colors.text, letterSpacing: -0.2 },
   quoListHeadLink: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  quoListHeadLinkText: { fontSize: 12, fontWeight: '700', color: '#7c3aed' },
+  quoListHeadLinkText: { fontSize: 12, fontWeight: '700', color: '#059669' },
 
   quoCarousel: {
     paddingRight: spacing.md,
@@ -2680,10 +2680,10 @@ const styles = StyleSheet.create({
   },
   quoCardAvatar: {
     width: 28, height: 28, borderRadius: 14,
-    backgroundColor: '#f3e8ff',
+    backgroundColor: '#d1fae5',
     alignItems: 'center', justifyContent: 'center',
   },
-  quoCardAvatarText: { fontSize: 12, fontWeight: '800', color: '#7c3aed' },
+  quoCardAvatarText: { fontSize: 12, fontWeight: '800', color: '#059669' },
   quoCardCustomer: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.text },
   quoCardNumber: { fontSize: 12, fontWeight: '700', color: colors.gray700 },
   quoCardDate: { fontSize: 11, color: colors.gray500, fontWeight: '500' },
@@ -2695,17 +2695,17 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: colors.gray100,
-    backgroundColor: '#faf5ff',
+    backgroundColor: '#ecfdf5',
   },
-  quoCardAmountLabel: { fontSize: 9.5, fontWeight: '800', color: '#7c3aed', letterSpacing: 0.6 },
-  quoCardAmount: { fontSize: 15, fontWeight: '800', color: '#1e1b4b' },
+  quoCardAmountLabel: { fontSize: 9.5, fontWeight: '800', color: '#059669', letterSpacing: 0.6 },
+  quoCardAmount: { fontSize: 15, fontWeight: '800', color: '#064e3b' },
 
   quoCardMore: {
     width: 150,
-    backgroundColor: '#faf5ff',
+    backgroundColor: '#ecfdf5',
     borderRadius: 16,
     borderWidth: 1.5,
-    borderColor: '#e9d5ff',
+    borderColor: '#a7f3d0',
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2714,10 +2714,10 @@ const styles = StyleSheet.create({
   },
   quoCardMoreIcon: {
     width: 40, height: 40, borderRadius: 20,
-    backgroundColor: '#f3e8ff',
+    backgroundColor: '#d1fae5',
     alignItems: 'center', justifyContent: 'center',
   },
-  quoCardMoreText: { fontSize: 12, fontWeight: '700', color: '#7c3aed', textAlign: 'center', lineHeight: 16 },
+  quoCardMoreText: { fontSize: 12, fontWeight: '700', color: '#059669', textAlign: 'center', lineHeight: 16 },
 
   quoEmpty: {
     backgroundColor: '#fff',
@@ -2730,7 +2730,7 @@ const styles = StyleSheet.create({
   },
   quoEmptyIcon: {
     width: 56, height: 56, borderRadius: 28,
-    backgroundColor: '#f3e8ff',
+    backgroundColor: '#d1fae5',
     alignItems: 'center', justifyContent: 'center',
     marginBottom: spacing.sm,
   },
@@ -2738,7 +2738,7 @@ const styles = StyleSheet.create({
   quoEmptyDesc: { fontSize: 12.5, color: colors.gray500, marginTop: 4, marginBottom: spacing.md, textAlign: 'center' },
   quoEmptyBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#059669',
     paddingHorizontal: 16, paddingVertical: 9,
     borderRadius: 999,
   },

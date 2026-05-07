@@ -24,8 +24,8 @@ const SLIDES: Slide[] = [
   {
     key: 'invoicing',
     icon: 'receipt',
-    iconColor: '#0EA5E9',
-    bg: '#E0F2FE',
+    iconColor: '#059669',
+    bg: '#D1FAE5',
     title: 'GST Invoices in Seconds',
     description: 'Create professional, GST-compliant invoices and send them on WhatsApp or email instantly.',
     bullets: ['Auto CGST / SGST / IGST', 'Custom branding & QR codes', 'PDF + WhatsApp share'],
@@ -33,8 +33,8 @@ const SLIDES: Slide[] = [
   {
     key: 'payments',
     icon: 'wallet',
-    iconColor: '#10B981',
-    bg: '#D1FAE5',
+    iconColor: '#047857',
+    bg: '#ECFDF5',
     title: 'Track Every Rupee',
     description: 'Record payments, monitor receivables and payables, and never miss a follow-up.',
     bullets: ['FIFO auto-allocation', 'Customer & vendor ledgers', 'Overdue alerts'],
@@ -42,8 +42,8 @@ const SLIDES: Slide[] = [
   {
     key: 'business',
     icon: 'analytics',
-    iconColor: '#F59E0B',
-    bg: '#FEF3C7',
+    iconColor: '#10B981',
+    bg: '#D1FAE5',
     title: 'Run Your Whole Business',
     description: 'Inventory, expenses, employees, GST returns and Tally sync — all in one place.',
     bullets: ['Live stock & expenses', 'Payroll & attendance', 'GSTR-1 / 3B / 2B + Tally'],

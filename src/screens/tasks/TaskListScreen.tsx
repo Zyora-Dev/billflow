@@ -480,14 +480,14 @@ const s = StyleSheet.create({
 
   // Hero
   hero: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#065f46',
     marginHorizontal: spacing.md,
     marginTop: spacing.md,
     borderRadius: 20,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     overflow: 'hidden',
-    shadowColor: colors.primary, shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4,
+    shadowColor: '#065f46', shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4,
   },
   heroAccent: {
     position: 'absolute',

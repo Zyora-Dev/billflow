@@ -59,6 +59,27 @@ import EwayBillDetailScreen from '../screens/eway-bills/EwayBillDetailScreen';
 import EwayBillFormScreen from '../screens/eway-bills/EwayBillFormScreen';
 import ReceivablesScreen from '../screens/receivables/ReceivablesScreen';
 import CustomerLedgerScreen from '../screens/receivables/CustomerLedgerScreen';
+import CreditNoteListScreen from '../screens/credit-notes/CreditNoteListScreen';
+import CreditNoteDetailScreen from '../screens/credit-notes/CreditNoteDetailScreen';
+import CreditNoteFormScreen from '../screens/credit-notes/CreditNoteFormScreen';
+import DebitNoteListScreen from '../screens/debit-notes/DebitNoteListScreen';
+import DebitNoteDetailScreen from '../screens/debit-notes/DebitNoteDetailScreen';
+import DebitNoteFormScreen from '../screens/debit-notes/DebitNoteFormScreen';
+import RecurringInvoiceListScreen from '../screens/recurring-invoices/RecurringInvoiceListScreen';
+import DeliveryChallanListScreen from '../screens/delivery-challans/DeliveryChallanListScreen';
+import DeliveryChallanDetailScreen from '../screens/delivery-challans/DeliveryChallanDetailScreen';
+import DeliveryChallanFormScreen from '../screens/delivery-challans/DeliveryChallanFormScreen';
+import ContractorListScreen from '../screens/contracts/ContractorListScreen';
+import ContractorPayoutScreen from '../screens/contracts/ContractorPayoutScreen';
+import LedgerScreen from '../screens/ledger/LedgerScreen';
+import SubscriptionScreen from '../screens/settings/SubscriptionScreen';
+import HelpSupportScreen from '../screens/settings/HelpSupportScreen';
+import ReceiptListScreen from '../screens/receipts/ReceiptListScreen';
+import ReceiptDetailScreen from '../screens/receipts/ReceiptDetailScreen';
+import PaymentVoucherListScreen from '../screens/payment-vouchers/PaymentVoucherListScreen';
+import PaymentVoucherDetailScreen from '../screens/payment-vouchers/PaymentVoucherDetailScreen';
+import PaymentReminderScreen from '../screens/payment-reminders/PaymentReminderScreen';
+import CustomFieldScreen from '../screens/custom-fields/CustomFieldScreen';
 import CustomTabBar from './CustomTabBar';
 import { QuickAddProvider } from '../components/QuickAddFAB';
 import { GlobalSearchProvider, useGlobalSearch } from '../components/GlobalSearch';
@@ -394,6 +415,75 @@ function EwayBillStack() {
   </Stack.Navigator>);
 }
 
+function CreditNoteStack() {
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="CreditNoteList" component={CreditNoteListScreen} options={{ title: 'Credit Notes' }} />
+    <Stack.Screen name="CreditNoteDetail" component={CreditNoteDetailScreen} options={{ title: 'Credit Note' }} />
+    <Stack.Screen name="CreditNoteForm" component={CreditNoteFormScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Edit Credit Note' : 'New Credit Note' })} />
+  </Stack.Navigator>);
+}
+
+function DebitNoteStack() {
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="DebitNoteList" component={DebitNoteListScreen} options={{ title: 'Debit Notes' }} />
+    <Stack.Screen name="DebitNoteDetail" component={DebitNoteDetailScreen} options={{ title: 'Debit Note' }} />
+    <Stack.Screen name="DebitNoteForm" component={DebitNoteFormScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Edit Debit Note' : 'New Debit Note' })} />
+  </Stack.Navigator>);
+}
+
+function RecurringInvoiceStack() {
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="RecurringInvoiceList" component={RecurringInvoiceListScreen} options={{ title: 'Recurring Invoices' }} />
+  </Stack.Navigator>);
+}
+
+function DeliveryChallanStack() {
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="DCList" component={DeliveryChallanListScreen} options={{ title: 'Delivery Challans' }} />
+    <Stack.Screen name="DCDetail" component={DeliveryChallanDetailScreen} options={{ title: 'Delivery Challan' }} />
+    <Stack.Screen name="DCForm" component={DeliveryChallanFormScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Edit Challan' : 'New Challan' })} />
+  </Stack.Navigator>);
+}
+
+function ContractStack() {
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="ContractorList" component={ContractorListScreen} options={{ title: 'Contractors' }} />
+    <Stack.Screen name="ContractorPayouts" component={ContractorPayoutScreen} options={{ title: 'Payouts' }} />
+  </Stack.Navigator>);
+}
+
+function LedgerStackNav() {
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="LedgerHome" component={LedgerScreen} options={{ title: 'Ledger' }} />
+  </Stack.Navigator>);
+}
+
+function ReceiptStack() {
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="ReceiptList" component={ReceiptListScreen} options={{ title: 'Receipts' }} />
+    <Stack.Screen name="ReceiptDetail" component={ReceiptDetailScreen} options={{ title: 'Receipt' }} />
+  </Stack.Navigator>);
+}
+
+function PaymentVoucherStack() {
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="PaymentVoucherList" component={PaymentVoucherListScreen} options={{ title: 'Payment Vouchers' }} />
+    <Stack.Screen name="PaymentVoucherDetail" component={PaymentVoucherDetailScreen} options={{ title: 'Payment Voucher' }} />
+  </Stack.Navigator>);
+}
+
+function PaymentReminderStackNav() {
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="PaymentReminderHome" component={PaymentReminderScreen} options={{ title: 'Payment Reminders' }} />
+  </Stack.Navigator>);
+}
+
+function CustomFieldStackNav() {
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="CustomFieldHome" component={CustomFieldScreen} options={{ title: 'Custom Fields' }} />
+  </Stack.Navigator>);
+}
+
 function PaymentStack() {
   return (<Stack.Navigator screenOptions={navHeader}>
     <Stack.Screen name="PaymentList" component={PaymentListScreen} options={{ title: 'Payments' }} />
@@ -412,6 +502,8 @@ function SettingsStack() {
   return (<Stack.Navigator screenOptions={navHeader}>
     <Stack.Screen name="SettingsHome" component={SettingsScreen} options={{ title: 'Settings' }} />
     <Stack.Screen name="Templates" component={TemplatesScreen} options={{ title: 'Document Templates' }} />
+    <Stack.Screen name="Subscription" component={SubscriptionScreen} options={{ title: 'Subscription' }} />
+    <Stack.Screen name="HelpSupport" component={HelpSupportScreen} options={{ title: 'Help & Support' }} />
   </Stack.Navigator>);
 }
 
@@ -428,9 +520,11 @@ function BottomTabs() {
   const insets = useSafeAreaInsets();
   const { stealthActive } = useAuth();
 
-  // Visible tabs differ in stealth mode
+  // Visible tabs change based on stealth mode
+  // Normal: Dashboard, Invoices, Expenses, Purchase
+  // Private: Dashboard, Invoices, Purchase, Customers, Vendors
   const visibleSet = stealthActive
-    ? new Set(['Dashboard', 'Invoices', 'Purchase', 'Vendors'])
+    ? new Set(['Dashboard', 'Invoices', 'Purchase', 'Customers', 'Vendors'])
     : new Set(['Dashboard', 'Invoices', 'Expenses', 'Purchase']);
 
   const hidden = (name: string) => visibleSet.has(name) ? undefined : { tabBarItemStyle: { display: 'none' as const } };
@@ -495,6 +589,16 @@ function BottomTabs() {
       <Tab.Screen name="Business" component={BusinessStack} options={{ tabBarItemStyle: { display: 'none' } }} />
       <Tab.Screen name="GST" component={GSTStackNav} options={{ tabBarItemStyle: { display: 'none' } }} />
       <Tab.Screen name="EwayBills" component={EwayBillStack} options={{ tabBarItemStyle: { display: 'none' } }} />
+      <Tab.Screen name="CreditNotes" component={CreditNoteStack} options={{ tabBarItemStyle: { display: 'none' } }} />
+      <Tab.Screen name="DebitNotes" component={DebitNoteStack} options={{ tabBarItemStyle: { display: 'none' } }} />
+      <Tab.Screen name="RecurringInvoices" component={RecurringInvoiceStack} options={{ tabBarItemStyle: { display: 'none' } }} />
+      <Tab.Screen name="DeliveryChallans" component={DeliveryChallanStack} options={{ tabBarItemStyle: { display: 'none' } }} />
+      <Tab.Screen name="Contracts" component={ContractStack} options={{ tabBarItemStyle: { display: 'none' } }} />
+      <Tab.Screen name="Ledger" component={LedgerStackNav} options={{ tabBarItemStyle: { display: 'none' } }} />
+      <Tab.Screen name="Receipts" component={ReceiptStack} options={{ tabBarItemStyle: { display: 'none' } }} />
+      <Tab.Screen name="PaymentVouchers" component={PaymentVoucherStack} options={{ tabBarItemStyle: { display: 'none' } }} />
+      <Tab.Screen name="PaymentReminders" component={PaymentReminderStackNav} options={{ tabBarItemStyle: { display: 'none' } }} />
+      <Tab.Screen name="CustomFields" component={CustomFieldStackNav} options={{ tabBarItemStyle: { display: 'none' } }} />
     </Tab.Navigator>
     </PreviewProvider>
     </GlobalSearchProvider>
@@ -503,8 +607,8 @@ function BottomTabs() {
 }
 
 // Drawer menu items
-interface DrawerItem { label: string; icon: keyof typeof Ionicons.glyphMap; tab: string; hideInStealth?: boolean; }
-interface DrawerGroup { title: string; items: DrawerItem[]; hideInStealth?: boolean; }
+interface DrawerItem { label: string; icon: keyof typeof Ionicons.glyphMap; tab: string; screen?: string; hideWhenPrivate?: boolean; }
+interface DrawerGroup { title: string; items: DrawerItem[]; hideWhenPrivate?: boolean; }
 
 const drawerGroups: DrawerGroup[] = [
   {
@@ -518,8 +622,12 @@ const drawerGroups: DrawerGroup[] = [
     title: 'Sales',
     items: [
       { label: 'Invoices', icon: 'document-text-outline', tab: 'Invoices' },
-      { label: 'Quotations', icon: 'document-outline', tab: 'Quotations', hideInStealth: true },
+      { label: 'Quotations', icon: 'document-outline', tab: 'Quotations' },
+      { label: 'Recurring Invoices', icon: 'repeat-outline', tab: 'RecurringInvoices' },
+      { label: 'Delivery Challans', icon: 'send-outline', tab: 'DeliveryChallans' },
+      { label: 'Credit Notes', icon: 'remove-circle-outline', tab: 'CreditNotes' },
       { label: 'Payments', icon: 'cash-outline', tab: 'Payments' },
+      { label: 'Receipts', icon: 'reader-outline', tab: 'Receipts' },
       { label: 'Customers', icon: 'people-outline', tab: 'Customers' },
     ],
   },
@@ -527,14 +635,15 @@ const drawerGroups: DrawerGroup[] = [
     title: 'Purchases',
     items: [
       { label: 'Purchase Bills', icon: 'newspaper-outline', tab: 'PurchaseBills' },
-      { label: 'Purchase Orders', icon: 'cart-outline', tab: 'PurchaseOrders', hideInStealth: true },
+      { label: 'Purchase Orders', icon: 'cart-outline', tab: 'PurchaseOrders' },
+      { label: 'Debit Notes', icon: 'add-circle-outline', tab: 'DebitNotes' },
       { label: 'Purchase Payments', icon: 'card-outline', tab: 'PurchasePayments' },
+      { label: 'Payment Vouchers', icon: 'document-attach-outline', tab: 'PaymentVouchers' },
       { label: 'Vendors', icon: 'storefront-outline', tab: 'Vendors' },
     ],
   },
   {
     title: 'Inventory',
-    hideInStealth: true,
     items: [
       { label: 'Items', icon: 'cube-outline', tab: 'Items' },
       { label: 'Stock', icon: 'layers-outline', tab: 'Inventory' },
@@ -542,15 +651,14 @@ const drawerGroups: DrawerGroup[] = [
   },
   {
     title: 'People',
-    hideInStealth: true,
     items: [
       { label: 'Employees', icon: 'person-outline', tab: 'Employees' },
       { label: 'Payroll', icon: 'wallet-outline', tab: 'Payroll' },
+      { label: 'Contractors', icon: 'briefcase-outline', tab: 'Contracts' },
     ],
   },
   {
     title: 'Services',
-    hideInStealth: true,
     items: [
       { label: 'Tasks & Orders', icon: 'checkbox-outline', tab: 'Tasks' },
       { label: 'Expenses', icon: 'receipt-outline', tab: 'Expenses' },
@@ -558,18 +666,21 @@ const drawerGroups: DrawerGroup[] = [
   },
   {
     title: 'Reports & Compliance',
-    hideInStealth: true,
     items: [
       { label: 'Reports', icon: 'bar-chart-outline', tab: 'Reports' },
-      { label: 'GST Returns', icon: 'calculator-outline', tab: 'GST' },
-      { label: 'E-Way Bills', icon: 'car-outline', tab: 'EwayBills' },
+      { label: 'Ledger', icon: 'book-outline', tab: 'Ledger' },
+      { label: 'GST Returns', icon: 'calculator-outline', tab: 'GST', hideWhenPrivate: true },
+      { label: 'E-Way Bills', icon: 'car-outline', tab: 'EwayBills', hideWhenPrivate: true },
     ],
   },
   {
     title: 'System',
     items: [
       { label: 'Business', icon: 'business-outline', tab: 'Business' },
+      { label: 'Payment Reminders', icon: 'alarm-outline', tab: 'PaymentReminders' },
+      { label: 'Custom Fields', icon: 'options-outline', tab: 'CustomFields' },
       { label: 'Settings', icon: 'settings-outline', tab: 'Settings' },
+      { label: 'Help & Support', icon: 'headset-outline', tab: 'Settings', screen: 'HelpSupport' },
     ],
   },
 ];
@@ -577,15 +688,22 @@ const drawerGroups: DrawerGroup[] = [
 function DrawerNavigator({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const navigation = useNavigation<any>();
   const { user, logout, stealthActive } = useAuth();
+  const isPrivate = stealthActive || !!user?.is_private;
 
-  const navigateTab = (tab: string) => { onClose(); setTimeout(() => navigation.navigate(tab), 100); };
+  const navigateTab = (tab: string, screen?: string) => {
+    onClose();
+    setTimeout(() => {
+      if (screen) { navigation.navigate(tab, { screen }); }
+      else { navigation.navigate(tab); }
+    }, 100);
+  };
   const handleLogout = () => { onClose(); Alert.alert('Logout', 'Are you sure?', [{ text: 'Cancel' }, { text: 'Logout', style: 'destructive', onPress: logout }]); };
 
   const visibleGroups = drawerGroups
-    .filter(g => !(stealthActive && g.hideInStealth))
+    .filter(g => !(isPrivate && g.hideWhenPrivate))
     .map(g => ({
       ...g,
-      items: g.items.filter(i => !(stealthActive && i.hideInStealth)),
+      items: g.items.filter(i => !(isPrivate && i.hideWhenPrivate)),
     }))
     .filter(g => g.items.length > 0);
 
@@ -604,7 +722,7 @@ function DrawerNavigator({ visible, onClose }: { visible: boolean; onClose: () =
               <View key={gi} style={gi > 0 ? dS.groupSpacer : undefined}>
                 <Text style={dS.groupTitle}>{group.title}</Text>
                 {group.items.map((item, i) => (
-                  <TouchableOpacity key={i} style={dS.menuItem} onPress={() => navigateTab(item.tab)} activeOpacity={0.7}>
+                  <TouchableOpacity key={i} style={dS.menuItem} onPress={() => navigateTab(item.tab, item.screen)} activeOpacity={0.7}>
                     <View style={dS.menuIconWrap}>
                       <Ionicons name={item.icon} size={18} color={colors.primary} />
                     </View>
