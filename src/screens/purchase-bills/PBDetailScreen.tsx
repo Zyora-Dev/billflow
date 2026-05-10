@@ -7,6 +7,7 @@ import api, { BASE_URL } from '../../api/client';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import StatusBadge from '../../components/StatusBadge';
 import CurrencyText from '../../components/CurrencyText';
+import { buildDocumentHTML } from '../../lib/document-templates';
 
 const STATUS_OPTIONS = ['Draft', 'Received', 'Paid', 'Partially Paid', 'Overdue', 'Cancelled'];
 
@@ -20,13 +21,27 @@ export default function PBDetailScreen({ route, navigation }: { route: any; navi
   const [payLoading, setPayLoading] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [business, setBusiness] = useState<any>(null);
+  const [vendor, setVendor] = useState<any>(null);
+  const [pbSettings, setPbSettings] = useState<any>(null);
+  const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
 
   const fetchBill = async () => {
     try {
       const r = await api.get(`/api/purchase-bills/${id}`);
-      setBill(r.data);
-      const biz = await api.get('/api/business');
-      if (biz.data[0]) setBusiness(biz.data[0]);
+      const billData = r.data;
+      setBill(billData);
+      const [bizRes, settingsRes] = await Promise.all([
+        api.get('/api/business'),
+        api.get(`/api/purchase-bill-settings?org_id=${billData.org_id}`).catch(() => ({ data: null })),
+      ]);
+      if (bizRes.data[0]) setBusiness(bizRes.data[0]);
+      if (settingsRes.data) setPbSettings(settingsRes.data);
+      // Fetch vendor details
+      if (billData.vendor_id) {
+        try { const vr = await api.get(`/api/vendors/${billData.vendor_id}`); setVendor(vr.data); } catch {}
+      }
+      // Fetch payment history
+      try { const pr = await api.get(`/api/purchase-payments/bill/${billData.id}`); setPaymentHistory(pr.data || []); } catch {}
     } catch {}
   };
 
@@ -74,63 +89,68 @@ export default function PBDetailScreen({ route, navigation }: { route: any; navi
 
   const generateHTML = () => {
     if (!bill) return '';
-    const items = (bill.items || []).map((it: any, i: number) => `
-      <tr>
-        <td style="padding:8px;border-bottom:1px solid #eee">${i + 1}</td>
-        <td style="padding:8px;border-bottom:1px solid #eee">${it.item_name}${it.serial_numbers ? `<div style="font-family:monospace;font-size:10px;color:#2563eb;margin-top:2px">S/N: ${it.serial_numbers}</div>` : ''}</td>
-        <td style="padding:8px;border-bottom:1px solid #eee;font-family:monospace;font-size:11px">${it.hsn_code || '—'}</td>
-        <td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${it.qty}</td>
-        <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">₹${it.rate?.toFixed(2)}</td>
-        <td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${it.tax_rate || 0}%</td>
-        <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">₹${it.amount?.toFixed(2)}</td>
-      </tr>`).join('');
-
-    return `<html><head><meta charset="utf-8"><style>
-      body{font-family:Helvetica,Arial;margin:0;padding:20px;color:#333}
-      .header{display:flex;justify-content:space-between;margin-bottom:24px}
-      .title{font-size:28px;font-weight:700;color:#1a1a40}
-      .info{font-size:13px;color:#666;margin-top:4px}
-      table{width:100%;border-collapse:collapse;margin:16px 0}
-      th{background:#1a1a40;color:#fff;padding:10px 8px;text-align:left;font-size:13px}
-      .summary{margin-left:auto;width:280px}
-      .sum-row{display:flex;justify-content:space-between;padding:4px 0;font-size:14px}
-      .total-row{border-top:2px solid #1a1a40;font-weight:700;font-size:16px;padding-top:8px;margin-top:4px}
-      .badge{display:inline-block;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600}
-    </style></head><body>
-      <div class="header">
-        <div>
-          <div class="title">${business?.business_name || 'Purchase Bill'}</div>
-          <div class="info">${business?.address || ''}</div>
-          <div class="info">${business?.mobile || ''} ${business?.email ? '• ' + business.email : ''}</div>
-          ${business?.gst_number ? `<div class="info">GSTIN: ${business.gst_number}</div>` : ''}
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:22px;font-weight:700;color:#1a1a40">PURCHASE BILL</div>
-          <div class="info">${bill.bill_number}</div>
-          ${bill.vendor_bill_number ? `<div class="info">Vendor Bill #: ${bill.vendor_bill_number}</div>` : ''}
-          <div class="info">Date: ${bill.bill_date}</div>
-          ${bill.due_date ? `<div class="info">Due: ${bill.due_date}</div>` : ''}
-          <div><span class="badge" style="background:${bill.status === 'Paid' ? '#16a34a' : bill.status === 'Overdue' ? '#dc2626' : '#f59e0b'};color:#fff">${bill.status}</span></div>
-        </div>
-      </div>
-      <div style="margin-bottom:16px">
-        <div style="font-size:13px;color:#666">Vendor</div>
-        <div style="font-size:16px;font-weight:600">${bill.vendor_name || 'N/A'}</div>
-      </div>
-      <table>
-        <tr><th>#</th><th>Item</th><th>HSN</th><th style="text-align:center">Qty</th><th style="text-align:right">Rate</th><th style="text-align:center">Tax</th><th style="text-align:right">Amount</th></tr>
-        ${items}
-      </table>
-      <div class="summary">
-        <div class="sum-row"><span>Subtotal</span><span>₹${bill.subtotal?.toFixed(2)}</span></div>
-        ${bill.discount_value > 0 ? `<div class="sum-row"><span>Discount</span><span>-₹${bill.discount_value?.toFixed(2)}</span></div>` : ''}
-        <div class="sum-row"><span>Tax</span><span>₹${bill.tax_amount?.toFixed(2)}</span></div>
-        <div class="sum-row total-row"><span>Total</span><span>₹${bill.total?.toFixed(2)}</span></div>
-        <div class="sum-row"><span>Amount Paid</span><span style="color:#16a34a">₹${bill.amount_paid?.toFixed(2)}</span></div>
-        <div class="sum-row"><span>Balance Due</span><span style="color:#dc2626;font-weight:700">₹${bill.balance_due?.toFixed(2)}</span></div>
-      </div>
-      ${bill.notes ? `<div style="margin-top:20px;padding:12px;background:#f9fafb;border-radius:8px"><div style="font-size:12px;color:#666;margin-bottom:4px">Notes</div><div style="font-size:13px">${bill.notes}</div></div>` : ''}
-    </body></html>`;
+    return buildDocumentHTML({
+      doc: {
+        bill_number: bill.bill_number,
+        bill_date: bill.bill_date,
+        vendor_bill_number: bill.vendor_bill_number,
+        due_date: bill.due_date,
+        status: bill.status,
+        subtotal: bill.subtotal,
+        discount_type: bill.discount_type,
+        discount_value: bill.discount_value,
+        tax_amount: bill.tax_amount,
+        freight_charges: bill.freight_charges,
+        round_off: bill.round_off,
+        total: bill.total,
+        amount_paid: bill.amount_paid,
+        balance_due: bill.balance_due,
+        notes: bill.notes,
+        items: bill.items || [],
+        customer_name: bill.vendor_name,
+      },
+      business: business ? {
+        business_name: business.business_name,
+        business_logo: business.business_logo,
+        address: business.address,
+        mobile: business.mobile,
+        email: business.email,
+        gst_number: business.gst_number,
+        pan: business.pan,
+      } : null,
+      customer: vendor ? {
+        contact_person: vendor.contact_person,
+        business_name: vendor.business_name,
+        address: vendor.address,
+        mobile: vendor.mobile,
+        email: vendor.email,
+        gst_number: vendor.gst_number,
+      } : null,
+      settings: pbSettings ? {
+        bill_title: pbSettings.bill_title,
+        template: pbSettings.template,
+        header_logo: pbSettings.header_logo,
+        font_family: pbSettings.font_family,
+        font_size: pbSettings.font_size,
+        footer_text: pbSettings.footer_text,
+        signature_image: pbSettings.signature_image,
+        bank_name: pbSettings.bank_name,
+        bank_account: pbSettings.bank_account,
+        bank_ifsc: pbSettings.bank_ifsc,
+        bank_branch: pbSettings.bank_branch,
+        qr_code_image: pbSettings.qr_code_image,
+        terms_and_conditions: pbSettings.terms_and_conditions,
+      } : null,
+      payments: paymentHistory.map((p: any) => ({
+        payment_date: p.payment_date,
+        amount: p.amount,
+        payment_method: p.payment_method,
+        reference_number: p.reference_number,
+      })),
+      baseUrl: BASE_URL,
+      assetDir: 'purchase',
+      isPurchaseBill: true,
+    });
   };
 
   const handleDownloadPDF = async () => {

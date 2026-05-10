@@ -36,6 +36,7 @@ export interface DocCustomer {
 export interface DocSettings {
   invoice_title?: string;
   quote_title?: string;
+  bill_title?: string;
   template?: string;
   header_logo?: string | null;
   font_family?: string;
@@ -80,6 +81,11 @@ export interface DocData {
   quotation_number?: string;
   quotation_date?: string;
   valid_until?: string | null;
+  // purchase bill
+  bill_number?: string;
+  bill_date?: string;
+  vendor_bill_number?: string | null;
+  salesperson_name?: string | null;
 }
 
 export interface BuildHtmlOptions {
@@ -89,8 +95,9 @@ export interface BuildHtmlOptions {
   settings: DocSettings | null;
   payments?: DocPayment[];
   baseUrl: string;
-  assetDir: 'invoice' | 'quotation';
+  assetDir: 'invoice' | 'quotation' | 'purchase';
   isQuotation?: boolean;
+  isPurchaseBill?: boolean;
 }
 
 export function numberToWordsINR(num: number): string {
@@ -127,29 +134,38 @@ const fmtDate = (d?: string | null, short = false) => {
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
+const STATE_MAP: Record<string, string> = {
+  '01': 'Jammu & Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab', '04': 'Chandigarh',
+  '05': 'Uttarakhand', '06': 'Haryana', '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh',
+  '10': 'Bihar', '11': 'Sikkim', '12': 'Arunachal Pradesh', '13': 'Nagaland', '14': 'Manipur',
+  '15': 'Mizoram', '16': 'Tripura', '17': 'Meghalaya', '18': 'Assam', '19': 'West Bengal',
+  '20': 'Jharkhand', '21': 'Odisha', '22': 'Chhattisgarh', '23': 'Madhya Pradesh',
+  '24': 'Gujarat', '26': 'Dadra & Nagar Haveli and Daman & Diu', '27': 'Maharashtra',
+  '29': 'Karnataka', '30': 'Goa', '31': 'Lakshadweep', '32': 'Kerala',
+  '33': 'Tamil Nadu', '34': 'Puducherry', '35': 'Andaman & Nicobar', '36': 'Telangana',
+  '37': 'Andhra Pradesh', '38': 'Ladakh',
+};
 const stateFromGST = (gst?: string | null) => {
   if (!gst || gst.length < 2) return '';
   const code = gst.substring(0, 2);
-  const states: Record<string, string> = {
-    '33': 'Tamil Nadu', '29': 'Karnataka', '27': 'Maharashtra', '07': 'Delhi', '06': 'Haryana',
-    '09': 'Uttar Pradesh', '32': 'Kerala', '36': 'Telangana', '37': 'Andhra Pradesh', '24': 'Gujarat',
-  };
-  return states[code] ? `${states[code]}, Code : ${code}` : `Code : ${code}`;
+  return STATE_MAP[code] ? `${STATE_MAP[code]}, Code : ${code}` : `Code : ${code}`;
 };
 
 function resolveCommon(opts: BuildHtmlOptions) {
-  const { doc, business, settings, baseUrl, assetDir, isQuotation } = opts;
+  const { doc, business, settings, baseUrl, assetDir, isQuotation, isPurchaseBill } = opts;
   const logoUrl = settings?.header_logo
     ? `${baseUrl}/assets/${assetDir}/${settings.header_logo}`
     : business?.business_logo ? `${baseUrl}/assets/logos/${business.business_logo}` : '';
   const fontFamily = settings?.font_family || 'Inter';
   const baseSize = settings?.font_size === 'small' ? 11 : settings?.font_size === 'large' ? 14 : 12;
-  const title = isQuotation ? settings?.quote_title || 'Quotation' : settings?.invoice_title || 'Tax Invoice';
-  const docNumber = doc.invoice_number || doc.quotation_number || '';
-  const docDate = doc.invoice_date || doc.quotation_date || '';
+  const title = isPurchaseBill
+    ? settings?.bill_title || 'Purchase Bill'
+    : isQuotation ? settings?.quote_title || 'Quotation' : settings?.invoice_title || 'Tax Invoice';
+  const docNumber = doc.invoice_number || doc.quotation_number || doc.bill_number || '';
+  const docDate = doc.invoice_date || doc.quotation_date || doc.bill_date || '';
   const docDue = doc.due_date || doc.valid_until || '';
   const halfTax = (doc.tax_amount || 0) / 2;
-  const discAmt = doc.discount_type === 'percentage'
+  const discAmt = (doc.discount_type === 'percentage' || doc.discount_type === 'percent')
     ? (doc.subtotal || 0) * ((doc.discount_value || 0) / 100)
     : (doc.discount_value || 0);
   return { logoUrl, fontFamily, baseSize, title, docNumber, docDate, docDue, halfTax, discAmt };
@@ -159,26 +175,33 @@ function resolveCommon(opts: BuildHtmlOptions) {
 // CLASSIC TEMPLATE (default — current existing layout)
 // ============================================================
 function classicTemplate(opts: BuildHtmlOptions): string {
-  const { doc, business, customer, settings, payments = [], baseUrl, assetDir, isQuotation } = opts;
+  const { doc, business, customer, settings, payments = [], baseUrl, assetDir, isQuotation, isPurchaseBill } = opts;
   const { logoUrl, fontFamily, baseSize, title, docNumber, docDate, docDue, halfTax, discAmt } = resolveCommon(opts);
+
+  const numberLabel = isPurchaseBill ? 'Bill No' : isQuotation ? 'Quote No' : 'Invoice No';
+  const partyLabel = isPurchaseBill ? 'Vendor' : 'Bill To';
+  const dueLabel = isQuotation ? 'Valid Until' : 'Due Date';
+  const balanceLabel = isPurchaseBill ? 'Balance Payable' : 'Balance Due';
+  const vendorBillNumber = (doc as any).vendor_bill_number;
 
   const statusColor: Record<string, string> = {
     Paid: '#16a34a', Sent: '#2563eb', Draft: '#71717a', Overdue: '#dc2626',
     'Partially Paid': '#f59e0b', Cancelled: '#dc2626', Accepted: '#16a34a', Rejected: '#dc2626', Expired: '#71717a',
+    Received: '#2563eb',
   };
   const sColor = statusColor[doc.status || ''] || '#71717a';
 
   const items = (doc.items || []).map((it, i) => `
     <tr>
-      <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;color:#71717a">${i + 1}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;font-weight:500">${it.item_name || ''}${it.serial_numbers ? `<div style="font-family:monospace;font-size:10px;color:#2563eb;margin-top:2px">S/N: ${it.serial_numbers}</div>` : ''}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;color:#71717a">${it.description || '—'}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;font-family:monospace;font-size:11px">${it.hsn_code || '—'}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;text-align:right">${it.qty} ${it.unit || ''}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;text-align:right">₹${fmt(it.rate || 0)}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;text-align:right">${it.discount_percent || 0}%</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;text-align:right">${it.tax_rate || 0}%</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:500">₹${fmt(it.amount || 0)}</td>
+      <td style="color:#71717a">${i + 1}</td>
+      <td style="font-weight:500">${it.item_name || ''}${it.serial_numbers ? `<div style="font-family:monospace;font-size:10px;color:#2563eb;margin-top:2px">S/N: ${it.serial_numbers}</div>` : ''}</td>
+      <td style="color:#71717a;font-size:11px">${it.description || '—'}</td>
+      <td style="font-family:monospace;font-size:11px">${it.hsn_code || '—'}</td>
+      <td style="text-align:right;white-space:nowrap">${it.qty} ${it.unit || ''}</td>
+      <td style="text-align:right;white-space:nowrap">₹${fmt(it.rate || 0)}</td>
+      <td style="text-align:right">${it.discount_percent || 0}%</td>
+      <td style="text-align:right">${it.tax_rate || 0}%</td>
+      <td style="text-align:right;font-weight:500;white-space:nowrap">₹${fmt(it.amount || 0)}</td>
     </tr>`).join('');
 
   const paymentRows = payments.map((p) => `
@@ -207,10 +230,11 @@ function classicTemplate(opts: BuildHtmlOptions): string {
     .label{font-size:10px;font-weight:600;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px}
     .info-card{display:inline-block;background:#fafafa;border:1px solid #e4e4e7;border-radius:8px;padding:10px 14px;text-align:left}
     .info-card p{margin:2px 0;font-size:11px}
-    table.items{width:100%;border-collapse:separate;border-spacing:0;font-size:11px;margin-top:6px}
-    table.items thead th{background:#18181b;color:#fff;padding:9px 12px;text-align:left;font-weight:500;font-size:11px}
+    table.items{width:100%;border-collapse:separate;border-spacing:0;font-size:12px;margin-top:6px;min-width:500px}
+    table.items thead th{background:#18181b;color:#fff;padding:8px 12px;text-align:left;font-weight:500;font-size:12px;white-space:nowrap;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     table.items thead th:first-child{border-top-left-radius:8px}
     table.items thead th:last-child{border-top-right-radius:8px}
+    table.items td{padding:8px 12px;border-bottom:1px solid #e4e4e7;vertical-align:top;word-wrap:break-word;overflow:hidden}
     .sum-wrap{display:flex;justify-content:flex-end;margin-top:18px}
     .summary{width:300px}
     .sum-row{display:flex;justify-content:space-between;font-size:11px;padding:3px 0}
@@ -225,8 +249,9 @@ function classicTemplate(opts: BuildHtmlOptions): string {
     .pay-table th.right{text-align:right}
     .qr{height:96px;width:96px;object-fit:contain;border:1px solid #e4e4e7;border-radius:6px}
     .sig{height:60px;object-fit:contain}
-    .footer{text-align:center;font-size:9px;color:#71717a}
-    @media print{body{padding:0}@page{margin:10mm}}
+    .footer{text-align:center;font-size:9px;color:#71717a;page-break-inside:avoid}
+    .bank-sig{page-break-inside:avoid}
+    @media print{body{padding:0}@page{margin:10mm}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}
   </style></head><body><div class="doc">
     <div class="row">
       <div class="biz-head">
@@ -256,7 +281,7 @@ function classicTemplate(opts: BuildHtmlOptions): string {
 
     <div class="grid2">
       <div>
-        <p class="label">Bill To</p>
+        <p class="label">${partyLabel}</p>
         <p style="font-weight:600;margin:0 0 2px">${customer?.business_name || customer?.contact_person || doc.customer_name || ''}</p>
         ${customer?.business_name && customer?.contact_person ? `<p class="muted">${customer.contact_person}</p>` : ''}
         ${customer?.address ? `<p class="muted">${customer.address}</p>` : ''}
@@ -265,22 +290,24 @@ function classicTemplate(opts: BuildHtmlOptions): string {
       </div>
       <div style="text-align:right">
         <div class="info-card">
-          <p><strong>${isQuotation ? 'Quote No' : 'Invoice No'}:</strong> ${docNumber}</p>
+          <p><strong>${numberLabel}:</strong> ${docNumber}</p>
+          ${vendorBillNumber ? `<p><strong>Vendor Bill #:</strong> ${vendorBillNumber}</p>` : ''}
           <p><strong>Date:</strong> ${fmtDate(docDate)}</p>
-          ${docDue ? `<p><strong>${isQuotation ? 'Valid Until' : 'Due Date'}:</strong> ${fmtDate(docDue)}</p>` : ''}
+          ${docDue ? `<p><strong>${dueLabel}:</strong> ${fmtDate(docDue)}</p>` : ''}
+          ${doc.salesperson_name ? `<p><strong>Sales Person:</strong> ${doc.salesperson_name}</p>` : ''}
         </div>
       </div>
     </div>
 
     <table class="items" style="margin-top:18px">
       <thead><tr>
-        <th style="width:32px">#</th><th>Item</th><th>Description</th>
-        <th style="width:70px">HSN</th>
-        <th style="text-align:right;width:60px">Qty</th>
+        <th style="width:40px">#</th><th>Item</th><th>Description</th>
+        <th style="width:80px">HSN</th>
+        <th style="text-align:right;width:56px">Qty</th>
         <th style="text-align:right;width:80px">Rate</th>
-        <th style="text-align:right;width:60px">Disc%</th>
-        <th style="text-align:right;width:60px">Tax%</th>
-        <th style="text-align:right;width:90px">Amount</th>
+        <th style="text-align:right;width:56px">Disc%</th>
+        <th style="text-align:right;width:56px">Tax%</th>
+        <th style="text-align:right;width:96px">Amount</th>
       </tr></thead>
       <tbody>${items}</tbody>
     </table>
@@ -295,12 +322,12 @@ function classicTemplate(opts: BuildHtmlOptions): string {
       <p class="words">${numberToWordsINR(doc.total || 0)}</p>
       ${!isQuotation && (doc.amount_paid || 0) > 0 ? `
         <div class="sum-row pay-row-green"><span>Amount Paid</span><span>₹${fmt(doc.amount_paid || 0)}</span></div>
-        <div class="sum-row pay-row-red"><span>Balance Due</span><span>₹${fmt(doc.balance_due || 0)}</span></div>` : ''}
+        <div class="sum-row pay-row-red"><span>${balanceLabel}</span><span>₹${fmt(doc.balance_due || 0)}</span></div>` : ''}
     </div></div>
 
     ${doc.notes ? `<div style="margin-top:18px"><p class="label">Notes</p><p class="notes">${doc.notes}</p></div>` : ''}
 
-    ${payments.length > 0 ? `
+    ${!isQuotation && payments.length > 0 ? `
       <div class="sep"></div>
       <p class="label">Payment History</p>
       <table class="pay-table">
@@ -308,6 +335,7 @@ function classicTemplate(opts: BuildHtmlOptions): string {
         <tbody>${paymentRows}</tbody>
       </table>` : ''}
 
+    <div class="bank-sig">
     ${(settings?.bank_name || settings?.qr_code_image) ? `
       <div class="sep"></div>
       <div class="grid2">
@@ -336,6 +364,7 @@ function classicTemplate(opts: BuildHtmlOptions): string {
       </div>` : ''}
 
     ${settings?.footer_text ? `<div class="sep"></div><p class="footer">${settings.footer_text}</p>` : ''}
+    </div>
   </div></body></html>`;
 }
 
@@ -343,25 +372,27 @@ function classicTemplate(opts: BuildHtmlOptions): string {
 // MODERN BLUE TEMPLATE (right-aligned blue title, info badges, blue wave footer)
 // ============================================================
 function modernBlueTemplate(opts: BuildHtmlOptions): string {
-  const { doc, business, customer, settings, baseUrl, assetDir, isQuotation } = opts;
+  const { doc, business, customer, settings, baseUrl, assetDir, isQuotation, isPurchaseBill } = opts;
   const { logoUrl, fontFamily, baseSize, title, docNumber, docDate, halfTax, discAmt } = resolveCommon(opts);
   const BLUE = '#2596d4';
   const TEAL = '#1a9e8f';
   const greeting = customer?.contact_person || customer?.business_name || '';
-  const docType = isQuotation ? 'quotation' : 'invoice';
-  const numberLabel = isQuotation ? 'Quotation No.' : 'Invoice No.';
+  const docType = isPurchaseBill ? 'purchase bill' : isQuotation ? 'quotation' : 'invoice';
+  const numberLabel = isPurchaseBill ? 'Bill No.' : isQuotation ? 'Quotation No.' : 'Invoice No.';
+  const partyLabel = isPurchaseBill ? 'Vendor' : 'Bill To';
+  const vendorBillNumber = (doc as any).vendor_bill_number;
 
   const items = (doc.items || []).map((it, i) => `
     <tr style="border-bottom:1px solid #e4e4e7">
-      <td style="padding:10px 8px">${i + 1}</td>
-      <td style="padding:10px 8px">
+      <td style="padding:10px 12px">${i + 1}</td>
+      <td style="padding:10px 12px">
         <div style="font-weight:500">${it.item_name || ''}</div>
         ${it.serial_numbers ? `<div style="font-size:11px;color:#52525b;font-family:monospace">S/N: ${it.serial_numbers}</div>` : ''}
         ${it.description ? `<div style="font-size:11px;color:#71717a">${it.description}</div>` : ''}
       </td>
-      <td style="padding:10px 8px;text-align:right;color:#52525b">${it.qty || 0} ${it.unit || ''}</td>
-      <td style="padding:10px 8px;text-align:right;color:#52525b">${fmt(it.rate || 0)}</td>
-      <td style="padding:10px 8px;text-align:right">${fmt(it.amount || 0)}</td>
+      <td style="padding:10px 12px;text-align:right;color:#52525b;white-space:nowrap">${it.qty || 0} ${it.unit || ''}</td>
+      <td style="padding:10px 12px;text-align:right;color:#52525b;white-space:nowrap">${fmt(it.rate || 0)}</td>
+      <td style="padding:10px 12px;text-align:right;white-space:nowrap">${fmt(it.amount || 0)}</td>
     </tr>`).join('');
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -369,7 +400,7 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
   <style>
     *{box-sizing:border-box}
     body{font-family:'${fontFamily}',system-ui,sans-serif;margin:0;color:#18181b;font-size:${baseSize}px;line-height:1.5;background:#fff}
-    .page{position:relative;min-height:1100px;padding:32px 40px 140px}
+    .page{display:flex;flex-direction:column;min-height:100vh;padding:32px 40px 0}
     .head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px}
     .logo{height:80px;width:80px;object-fit:contain}
     .logo-fallback{height:80px;width:80px;background:${BLUE};color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700}
@@ -386,9 +417,8 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
     .pill-val{font-weight:700;color:#18181b}
     .greet{margin-top:16px}
     .greet p{margin:2px 0;font-size:12px;color:#3f3f46}
-    table.items{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
-    table.items thead tr{border-top:2px solid ${BLUE};border-bottom:2px solid ${BLUE}}
-    table.items thead th{padding:9px 8px;text-align:left;font-weight:700;color:#18181b}
+    table.items{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px;min-width:500px}
+    table.items thead th{padding:8px 12px;text-align:left;font-weight:700;color:#fff;white-space:nowrap;border:1px solid rgba(255,255,255,0.3);background-color:${BLUE};-webkit-print-color-adjust:exact;print-color-adjust:exact}
     .sum-wrap{display:flex;justify-content:flex-end;margin-top:14px}
     .summary{width:300px;font-size:12px}
     .sum-row{display:flex;justify-content:space-between;padding:3px 0}
@@ -396,16 +426,16 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
     .grand{display:flex;justify-content:space-between;font-weight:700;font-size:16px;padding-top:8px;margin-top:6px;border-top:2px solid ${BLUE}}
     .grand .val{color:${BLUE}}
     .words{font-size:10px;color:#52525b;font-style:italic;margin-top:6px}
-    .bank-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;padding-top:14px;border-top:1px solid #e4e4e7}
+    .bank-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;padding-top:14px;border-top:1px solid #e4e4e7;page-break-inside:avoid}
     .bank-label{font-size:10px;font-weight:700;text-transform:uppercase;color:#71717a;margin-bottom:4px}
     .bank-line{font-size:11px;margin:1px 0;color:#3f3f46}
     .qr{height:96px;width:96px;object-fit:contain;justify-self:end}
-    .sig-wrap{display:flex;justify-content:flex-end;margin-top:24px}
+    .sig-wrap{display:flex;justify-content:flex-end;margin-top:24px;page-break-inside:avoid}
     .sig{height:56px;object-fit:contain;display:block;margin:0 auto}
     .sig-cap{font-size:10px;color:#52525b;text-align:center;margin-top:4px}
-    .wave-wrap{position:absolute;bottom:0;left:0;right:0}
+    .wave-wrap{margin-top:auto;margin-left:-40px;margin-right:-40px}
     .wave-text{text-align:center;padding:4px 32px 12px;font-size:10px;color:#52525b}
-    @media print{body{padding:0}@page{margin:0}}
+    @media print{body{padding:0}@page{margin:0}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}
   </style></head><body><div class="page">
     <div class="head">
       <div>${logoUrl ? `<img class="logo" src="${logoUrl}" alt=""/>` : `<div class="logo-fallback">${(business?.business_name || '?').charAt(0)}</div>`}</div>
@@ -421,7 +451,7 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
 
     <div class="info-row">
       <div class="bill-card">
-        <p class="bill-label">Bill To</p>
+        <p class="bill-label">${partyLabel}</p>
         <p class="bill-name">${customer?.business_name || customer?.contact_person || doc.customer_name || ''}</p>
         ${customer?.business_name && customer?.contact_person ? `<p class="bill-line">${customer.contact_person}</p>` : ''}
         ${customer?.address ? `<p class="bill-line">${customer.address}</p>` : ''}
@@ -431,7 +461,9 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
       <div>
         <span class="pill"><span class="pill-key">Date: </span><span class="pill-val">${fmtDate(docDate, true)}</span></span>
         <span class="pill"><span class="pill-key">${numberLabel} </span><span class="pill-val">${docNumber}</span></span>
+        ${vendorBillNumber ? `<span class="pill"><span class="pill-key">Vendor Bill # </span><span class="pill-val">${vendorBillNumber}</span></span>` : ''}
         <span class="pill"><span class="pill-key">Grand Total: </span><span class="pill-val">₹ ${fmt(doc.total || 0)}</span></span>
+        ${doc.salesperson_name ? `<span class="pill"><span class="pill-key">Sales Person: </span><span class="pill-val">${doc.salesperson_name}</span></span>` : ''}
       </div>
     </div>
 
@@ -444,8 +476,8 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
 
     <table class="items">
       <thead><tr>
-        <th style="width:36px">S.No.</th><th>Item Details</th>
-        <th style="text-align:right;width:80px">Quantity</th>
+        <th style="width:40px">S.No.</th><th>Item Details</th>
+        <th style="text-align:right;width:70px">Qty</th>
         <th style="text-align:right;width:80px">Price</th>
         <th style="text-align:right;width:90px">Total</th>
       </tr></thead>
@@ -454,13 +486,13 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
 
     <div class="sum-wrap"><div class="summary">
       <div class="sum-row"><span class="lbl">Subtotal</span><span>₹${fmt(doc.subtotal || 0)}</span></div>
-      ${discAmt > 0 ? `<div class="sum-row"><span class="lbl">Discount${doc.discount_type === 'percentage' ? ` (${doc.discount_value}%)` : ''}</span><span style="color:#dc2626">-₹${fmt(discAmt)}</span></div>` : ''}
+      ${discAmt > 0 ? `<div class="sum-row"><span class="lbl">Discount${(doc.discount_type === 'percentage' || doc.discount_type === 'percent') ? ` (${doc.discount_value}%)` : ''}</span><span style="color:#dc2626">-₹${fmt(discAmt)}</span></div>` : ''}
       ${(doc.tax_amount || 0) > 0 ? `<div class="sum-row"><span class="lbl">CGST</span><span>₹${fmt(halfTax)}</span></div><div class="sum-row"><span class="lbl">SGST</span><span>₹${fmt(halfTax)}</span></div>` : ''}
       <div class="grand"><span>Grand Total</span><span class="val">₹${fmt(doc.total || 0)}</span></div>
       <p class="words">${numberToWordsINR(doc.total || 0)}</p>
       ${!isQuotation && (doc.amount_paid || 0) > 0 ? `
         <div class="sum-row" style="color:#16a34a"><span>Amount Paid</span><span>₹${fmt(doc.amount_paid || 0)}</span></div>
-        <div class="sum-row" style="color:#dc2626;font-weight:700"><span>Balance Due</span><span>₹${fmt(doc.balance_due || 0)}</span></div>` : ''}
+        <div class="sum-row" style="color:#dc2626;font-weight:700"><span>${isPurchaseBill ? 'Balance Payable' : 'Balance Due'}</span><span>₹${fmt(doc.balance_due || 0)}</span></div>` : ''}
     </div></div>
 
     ${(settings?.bank_name || settings?.qr_code_image) ? `
@@ -490,8 +522,8 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
     <div class="wave-wrap">
       <div class="wave-text">${settings?.footer_text || `This is a computer generated ${docType}`} &nbsp;·&nbsp; Page 1 of 1</div>
       <svg viewBox="0 0 600 60" preserveAspectRatio="none" style="width:100%;height:48px;display:block">
-        <path d="M0,40 Q150,0 300,30 T600,20 L600,60 L0,60 Z" fill="${TEAL}" opacity="0.85"/>
-        <path d="M0,50 Q150,20 300,40 T600,35 L600,60 L0,60 Z" fill="${TEAL}"/>
+        <path d="M0,40 Q150,0 300,30 T600,20 L600,60 L0,60 Z" fill="${BLUE}" opacity="0.85"/>
+        <path d="M0,50 Q150,20 300,40 T600,35 L600,60 L0,60 Z" fill="${BLUE}"/>
       </svg>
     </div>
   </div></body></html>`;
@@ -501,9 +533,16 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
 // TALLY TAX TEMPLATE (bordered Tally-style GST tax invoice)
 // ============================================================
 function tallyTaxTemplate(opts: BuildHtmlOptions): string {
-  const { doc, business, customer, settings, baseUrl, assetDir, isQuotation } = opts;
+  const { doc, business, customer, settings, baseUrl, assetDir, isQuotation, isPurchaseBill } = opts;
   const { logoUrl, fontFamily, baseSize, title, docNumber, docDate, docDue, halfTax } = resolveCommon(opts);
   const itemsCount = (doc.items || []).reduce((s, i) => s + (i.qty || 0), 0);
+  const vendorBillNumber = (doc as any).vendor_bill_number;
+
+  // Labels
+  const numberLabel = isPurchaseBill ? 'Bill No.' : isQuotation ? 'Quotation No.' : 'Invoice No.';
+  const consigneeLabel = isPurchaseBill ? 'Supplier (Vendor)' : 'Consignee (Ship to)';
+  const buyerLabel = isPurchaseBill ? 'Bill From (Vendor)' : 'Buyer (Bill to)';
+  const orderLabel = isPurchaseBill ? "Supplier's Order No." : "Buyer's Order No.";
 
   // Inter-state detection from GSTINs
   const bizCode = (business?.gst_number || '').substring(0, 2);
@@ -519,7 +558,7 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
   });
   const totalLineDisc = lines.reduce((s, l) => s + l.lineDisc, 0);
   const subtotal = lines.reduce((s, l) => s + l.taxable, 0);
-  const docDiscAmt = doc.discount_type === 'percent'
+  const docDiscAmt = (doc.discount_type === 'percentage' || doc.discount_type === 'percent')
     ? subtotal * ((doc.discount_value || 0) / 100)
     : (doc.discount_value || 0);
   const taxableAfterDocDisc = subtotal - docDiscAmt;
@@ -549,22 +588,23 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
   <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontFamily)}:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *{box-sizing:border-box}
-    body{font-family:'${fontFamily}',system-ui,sans-serif;margin:0;padding:24px;color:#18181b;font-size:${Math.max(baseSize - 1, 10)}px;line-height:1.4}
+    body{font-family:'${fontFamily}',system-ui,sans-serif;margin:0;padding:24px;color:#18181b;font-size:${Math.max(baseSize - 1, 10)}px}
     .title{text-align:center;font-weight:700;font-size:14px;padding-bottom:4px}
-    table.frame{width:100%;border-collapse:collapse;border:1px solid #18181b;table-layout:fixed}
-    .cell{border:1px solid #18181b;padding:5px 8px;vertical-align:top;word-wrap:break-word}
+    table.frame{width:100%;border-collapse:collapse;border:1px solid #3f3f46}
+    .cell{border:1px solid #3f3f46;padding:4px 8px;vertical-align:top}
     .meta-tbl{width:100%;border-collapse:collapse}
-    .meta-tbl td{padding:3px 6px;vertical-align:top;font-size:10px}
+    .meta-tbl td{padding:4px 8px;vertical-align:top;font-size:10px}
     .meta-tbl .lbl{color:#52525b}
     .meta-tbl .v{font-weight:700}
-    .b-r{border-right:1px solid #18181b}
-    .b-b{border-bottom:1px solid #18181b}
+    .b-r{border-right:1px solid #3f3f46}
+    .b-b{border-bottom:1px solid #3f3f46}
     .head-cell{display:flex;gap:10px;align-items:flex-start}
     .head-cell img{height:80px;width:80px;object-fit:contain;flex-shrink:0}
     .biz-name{font-weight:700;font-size:13px}
     .row-label{color:#52525b;font-size:10px}
     .footer-note{text-align:center;color:#52525b;padding-top:6px;font-size:10px}
     .sig-block img{height:56px;object-fit:contain}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
     @media print{body{padding:0}@page{margin:8mm}}
   </style></head><body>
     <div class="title">${title}</div>
@@ -590,19 +630,20 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
         </td>
         <td class="cell" colspan="4" style="padding:0">
           <table class="meta-tbl"><tbody>
-            <tr><td class="b-b b-r" style="width:50%"><div class="lbl">${isQuotation ? 'Quotation No.' : 'Invoice No.'}</div><div class="v">${docNumber}</div></td>
+            <tr><td class="b-b b-r" style="width:50%"><div class="lbl">${numberLabel}</div><div class="v">${docNumber}</div></td>
                 <td class="b-b"><div class="lbl">Dated</div><div class="v">${fmtDate(docDate, true)}</div></td></tr>
-            <tr><td class="b-b b-r"><div class="lbl">Mode/Terms of Payment</div><div>&nbsp;</div></td>
+            <tr><td class="b-b b-r">${vendorBillNumber ? `<div class="lbl">Vendor Bill #</div><div class="v">${vendorBillNumber}</div>` : `<div class="lbl">Mode/Terms of Payment</div><div>&nbsp;</div>`}</td>
                 <td class="b-b"><div class="lbl">${isQuotation ? 'Valid Until' : 'Due Date'}</div><div class="v">${docDue ? fmtDate(docDue, true) : ''}</div></td></tr>
             <tr><td class="b-r"><div class="lbl">Reference No. &amp; Date</div><div>&nbsp;</div></td>
-                <td><div class="lbl">Buyer's Order No.</div><div>&nbsp;</div></td></tr>
+                <td><div class="lbl">${orderLabel}</div><div>&nbsp;</div></td></tr>
+            ${doc.salesperson_name ? `<tr><td class="b-r" colspan="2"><div class="lbl">Sales Person</div><div class="v">${doc.salesperson_name}</div></td></tr>` : ''}
           </tbody></table>
         </td>
       </tr>
 
       <tr>
         <td class="cell" colspan="9">
-          <div class="row-label">Consignee (Ship to)</div>
+          <div class="row-label">${consigneeLabel}</div>
           <div class="biz-name">${customer?.business_name || customer?.contact_person || doc.customer_name || ''}</div>
           ${customer?.business_name && customer?.contact_person ? `<div>${customer.contact_person}</div>` : ''}
           ${customer?.address ? `<div>${customer.address}</div>` : ''}
@@ -613,7 +654,7 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
       </tr>
       <tr>
         <td class="cell" colspan="9">
-          <div class="row-label">Buyer (Bill to)</div>
+          <div class="row-label">${buyerLabel}</div>
           <div class="biz-name">${customer?.business_name || customer?.contact_person || doc.customer_name || ''}</div>
           ${customer?.business_name && customer?.contact_person ? `<div>${customer.contact_person}</div>` : ''}
           ${customer?.address ? `<div>${customer.address}</div>` : ''}
@@ -623,12 +664,12 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
         </td>
       </tr>
 
-      <tr style="font-weight:700;background:#fafafa">
+      <tr style="font-weight:600;background:#fafafa">
         <td class="cell" style="text-align:center">Sl<br/>No.</td>
         <td class="cell">Description of Goods</td>
         <td class="cell" style="text-align:center">HSN/SAC</td>
         <td class="cell" style="text-align:center">GST<br/>%</td>
-        <td class="cell" style="text-align:right">Quantity</td>
+        <td class="cell" style="text-align:center">Quantity</td>
         <td class="cell" style="text-align:right">Rate</td>
         <td class="cell" style="text-align:center">per</td>
         <td class="cell" style="text-align:right">Disc<br/>%</td>
@@ -643,7 +684,7 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
 
       ${docDiscAmt > 0 ? `
       <tr><td class="cell" colspan="2"></td>
-          <td class="cell" colspan="6" style="font-style:italic;text-align:right">Less : Discount${doc.discount_type === 'percent' ? ` @ ${doc.discount_value}%` : ''}</td>
+          <td class="cell" colspan="6" style="font-style:italic;text-align:right">Less : Discount${(doc.discount_type === 'percentage' || doc.discount_type === 'percent') ? ` @ ${doc.discount_value}%` : ''}</td>
           <td class="cell" style="text-align:right">(-) ${fmt(docDiscAmt)}</td></tr>` : ''}
 
       ${(docDiscAmt > 0 || totalLineDisc > 0) ? `
@@ -671,7 +712,7 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
 
       <tr><td class="cell" colspan="9" style="height:30px"></td></tr>
 
-      <tr style="font-weight:700;background:#fafafa">
+      <tr style="font-weight:600;background:#fafafa">
         <td class="cell"></td>
         <td class="cell" colspan="3" style="text-align:right">Total</td>
         <td class="cell" style="text-align:right">${itemsCount}</td>
@@ -713,12 +754,12 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
         <td class="cell" colspan="9">
           ${business?.pan ? `<div>Company's PAN : <strong>${business.pan}</strong></div>` : ''}
           <div style="font-weight:700;text-decoration:underline;margin-top:4px">Declaration</div>
-          <div>We declare that this ${isQuotation ? 'quotation reflects' : 'invoice shows'} the actual price of the goods described and that all particulars are true and correct.</div>
+          <div>We declare that this ${isPurchaseBill ? 'purchase bill reflects' : isQuotation ? 'quotation reflects' : 'invoice shows'} the actual price of the goods described and that all particulars are true and correct.</div>
           ${settings?.terms_and_conditions ? `<div style="white-space:pre-wrap;margin-top:4px">${settings.terms_and_conditions}</div>` : ''}
         </td>
       </tr>
     </tbody></table>
-    <div class="footer-note">${settings?.footer_text || `This is a Computer Generated ${isQuotation ? 'Quotation' : 'Invoice'}`}</div>
+    <div class="footer-note">${settings?.footer_text || `This is a Computer Generated ${isPurchaseBill ? 'Purchase Bill' : isQuotation ? 'Quotation' : 'Invoice'}`}</div>
   </body></html>`;
 }
 

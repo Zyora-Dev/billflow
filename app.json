@@ -24,7 +24,10 @@
         "backgroundColor": "#064e3b"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/spectra-books.png"
@@ -46,6 +49,12 @@
           "cameraPermission": "SpectraBooks needs access to your camera to take photos for tasks, documents, and barcode scanning."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c1c38aa5-d08c-4178-88f9-0ab3d25a3649"
+      }
+    },
+    "owner": "spectrasaas"
   }
 }

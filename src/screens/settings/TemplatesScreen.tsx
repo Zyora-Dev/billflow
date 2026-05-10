@@ -6,16 +6,18 @@ import { useToast } from '../../components/Toast';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import { TEMPLATE_OPTIONS } from '../../lib/document-templates';
 
-type DocKind = 'invoice' | 'quotation';
+type DocKind = 'invoice' | 'quotation' | 'purchase_bill';
 
 const KIND_LABEL: Record<DocKind, string> = {
   invoice: 'Invoice',
   quotation: 'Quotation',
+  purchase_bill: 'Purchase Bill',
 };
 
 const SETTINGS_PATH: Record<DocKind, string> = {
   invoice: '/api/invoice-settings',
   quotation: '/api/quotation-settings',
+  purchase_bill: '/api/purchase-bill-settings',
 };
 
 export default function TemplatesScreen({ navigation }: { navigation: any }) {
@@ -26,6 +28,7 @@ export default function TemplatesScreen({ navigation }: { navigation: any }) {
   const [saving, setSaving] = useState(false);
   const [invoiceTpl, setInvoiceTpl] = useState<string>('classic');
   const [quotationTpl, setQuotationTpl] = useState<string>('classic');
+  const [purchaseBillTpl, setPurchaseBillTpl] = useState<string>('classic');
 
   const load = async () => {
     try {
@@ -38,12 +41,14 @@ export default function TemplatesScreen({ navigation }: { navigation: any }) {
         return;
       }
       setOrgId(org);
-      const [inv, q] = await Promise.all([
+      const [inv, q, pb] = await Promise.all([
         api.get(`/api/invoice-settings?org_id=${org}`).catch(() => null),
         api.get(`/api/quotation-settings?org_id=${org}`).catch(() => null),
+        api.get(`/api/purchase-bill-settings?org_id=${org}`).catch(() => null),
       ]);
       if (inv?.data?.template) setInvoiceTpl(inv.data.template);
       if (q?.data?.template) setQuotationTpl(q.data.template);
+      if (pb?.data?.template) setPurchaseBillTpl(pb.data.template);
     } finally {
       setLoading(false);
     }
@@ -51,7 +56,7 @@ export default function TemplatesScreen({ navigation }: { navigation: any }) {
 
   useEffect(() => { load(); }, []);
 
-  const currentTpl = kind === 'invoice' ? invoiceTpl : quotationTpl;
+  const currentTpl = kind === 'invoice' ? invoiceTpl : kind === 'quotation' ? quotationTpl : purchaseBillTpl;
 
   const select = async (templateId: string) => {
     if (!orgId || saving) return;
@@ -70,7 +75,8 @@ export default function TemplatesScreen({ navigation }: { navigation: any }) {
         return;
       }
       if (kind === 'invoice') setInvoiceTpl(templateId);
-      else setQuotationTpl(templateId);
+      else if (kind === 'quotation') setQuotationTpl(templateId);
+      else setPurchaseBillTpl(templateId);
       toast.success(`${KIND_LABEL[kind]} template updated`);
     } catch (e: any) {
       const detail = e?.response?.data?.detail || e?.response?.data || e?.message || 'Failed';
@@ -88,7 +94,7 @@ export default function TemplatesScreen({ navigation }: { navigation: any }) {
   return (
     <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: 40 }}>
       <View style={s.tabRow}>
-        {(['invoice', 'quotation'] as DocKind[]).map((k) => (
+        {(['invoice', 'quotation', 'purchase_bill'] as DocKind[]).map((k) => (
           <TouchableOpacity
             key={k}
             onPress={() => setKind(k)}

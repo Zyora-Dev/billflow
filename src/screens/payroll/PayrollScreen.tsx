@@ -14,7 +14,7 @@ import { SkeletonList } from '../../components/Skeleton';
 const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-const STATUSES = ['All', 'Draft', 'Paid'];
+const STATUSES = ['All', 'Draft', 'Paid', 'Not Generated'];
 
 const AVATAR_COLORS = [
   { bg: '#dbeafe', fg: '#1d4ed8' },
@@ -31,6 +31,9 @@ function avatarColor(name: string) {
 
 export default function PayrollScreen({ navigation }: { navigation: any }) {
   const [payroll, setPayroll] = useState<any[]>([]);
+  const [allEmployees, setAllEmployees] = useState<any[]>([]);
+  const [attendanceSummary, setAttendanceSummary] = useState<any[]>([]);
+  const [tableData, setTableData] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [orgId, setOrgId] = useState('');
@@ -44,10 +47,13 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [exporting, setExporting] = useState(false);
+  const [isGenerated, setIsGenerated] = useState(false);
 
   // Employee adjustments for generate
   const [employees, setEmployees] = useState<any[]>([]);
   const [adjustments, setAdjustments] = useState<Record<string, { bonus: string; incentives: string; deductions: { label: string; amount: string }[] }>>({});
+
+  const DEFAULT_WORKING_DAYS = 26;
 
   const fetchData = useCallback(async () => {
     try {
@@ -55,8 +61,77 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
       const oid = biz.data[0]?.org_id;
       if (oid) {
         setOrgId(oid);
-        const res = await api.get(`/api/payroll?org_id=${oid}&month=${month}&year=${year}`);
-        setPayroll(Array.isArray(res.data) ? res.data : []);
+        // Fetch all 3 in parallel like web
+        const [payRes, empRes, attRes] = await Promise.all([
+          api.get(`/api/payroll?org_id=${oid}&month=${month}&year=${year}`),
+          api.get(`/api/employees?org_id=${oid}&status=Active`),
+          api.get(`/api/attendance/summary?org_id=${oid}&month=${month}&year=${year}`),
+        ]);
+        const pr = Array.isArray(payRes.data) ? payRes.data : [];
+        const emps = Array.isArray(empRes.data) ? empRes.data : [];
+        const att = Array.isArray(attRes.data) ? attRes.data : [];
+        setPayroll(pr);
+        setAllEmployees(emps);
+        setAttendanceSummary(att);
+        setIsGenerated(pr.length > 0);
+
+        // Build merged table like web: always show all employees
+        const merged = emps.map((emp: any) => {
+          const prRec = pr.find((p: any) => p.employee_id === emp.id);
+          const attRec = att.find((a: any) => a.employee_id === emp.id);
+          const present = attRec ? (parseInt(attRec.present || 0) + (parseInt(attRec.half_day || 0) * 0.5)) : 0;
+          const absent = attRec ? parseInt(attRec.absent || 0) : 0;
+          const leave = attRec ? parseInt(attRec.leave || 0) : 0;
+          const wd = prRec ? prRec.working_days : DEFAULT_WORKING_DAYS;
+          const salary = parseFloat(emp.salary_amount || 0);
+
+          if (prRec) {
+            // Payroll exists — use payroll data
+            return {
+              employee_id: emp.id,
+              employee_name: emp.name,
+              salary_type: emp.salary_type,
+              working_days: prRec.working_days,
+              present_days: prRec.present_days,
+              absent_days: absent,
+              leave_days: leave,
+              salary_amount: salary,
+              earned_amount: parseFloat(prRec.earned_amount || 0),
+              bonus: parseFloat(prRec.bonus || 0) + parseFloat(prRec.incentives || 0),
+              deductions: parseFloat(prRec.deductions || 0),
+              net_pay: parseFloat(prRec.net_pay || 0),
+              status: prRec.status,
+              payroll_id: prRec.id,
+              generated: true,
+            };
+          } else {
+            // No payroll — calculate live from attendance
+            let earned = 0;
+            if (emp.salary_type === 'daily') {
+              earned = salary * present;
+            } else {
+              earned = wd > 0 ? (salary / wd) * present : 0;
+            }
+            return {
+              employee_id: emp.id,
+              employee_name: emp.name,
+              salary_type: emp.salary_type,
+              working_days: wd,
+              present_days: present,
+              absent_days: absent,
+              leave_days: leave,
+              salary_amount: salary,
+              earned_amount: earned,
+              bonus: 0,
+              deductions: 0,
+              net_pay: 0,
+              status: null,
+              payroll_id: null,
+              generated: false,
+            };
+          }
+        });
+        setTableData(merged);
       }
     } catch {} finally {
       setLoading(false);
@@ -68,28 +143,34 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
   useEffect(() => navigation.addListener('focus', fetchData), [navigation, fetchData]);
 
   const filtered = useMemo(() => {
-    let data = payroll;
-    if (statusFilter !== 'All') data = data.filter(p => p.status === statusFilter);
+    let data = tableData;
+    if (statusFilter === 'Paid') data = data.filter(p => p.status === 'Paid');
+    else if (statusFilter === 'Draft') data = data.filter(p => p.status === 'Draft');
+    else if (statusFilter === 'Not Generated') data = data.filter(p => !p.generated);
     if (search) {
       const q = search.toLowerCase();
       data = data.filter(p => p.employee_name?.toLowerCase().includes(q));
     }
     return data;
-  }, [payroll, statusFilter, search]);
+  }, [tableData, statusFilter, search]);
 
   const stats = useMemo(() => {
-    const totalNet = payroll.reduce((s, p) => s + (parseFloat(p.net_pay) || 0), 0);
-    const paidAmt = payroll.filter(p => p.status === 'Paid').reduce((s, p) => s + (parseFloat(p.net_pay) || 0), 0);
-    const draftAmt = payroll.filter(p => p.status === 'Draft').reduce((s, p) => s + (parseFloat(p.net_pay) || 0), 0);
+    const totalGross = tableData.reduce((s, p) => s + (p.salary_amount || 0), 0);
+    const totalEarned = tableData.reduce((s, p) => s + (p.earned_amount || 0), 0);
+    const totalNet = tableData.reduce((s, p) => s + (p.net_pay || 0), 0);
+    const paidAmt = tableData.filter(p => p.status === 'Paid').reduce((s, p) => s + (p.net_pay || 0), 0);
+    const draftAmt = tableData.filter(p => p.status === 'Draft').reduce((s, p) => s + (p.net_pay || 0), 0);
     return {
-      total: payroll.length,
-      paid: payroll.filter(p => p.status === 'Paid').length,
-      draft: payroll.filter(p => p.status === 'Draft').length,
+      total: tableData.length,
+      paid: tableData.filter(p => p.status === 'Paid').length,
+      draft: tableData.filter(p => p.status === 'Draft').length,
+      totalGross,
+      totalEarned,
       totalNet,
       paidAmt,
       draftAmt,
     };
-  }, [payroll]);
+  }, [tableData]);
 
   const generatePayroll = async () => {
     if (!workingDays || parseInt(workingDays) <= 0) return Alert.alert('Validation', 'Enter valid working days');
@@ -109,7 +190,7 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
           };
         }
       });
-      await api.post(`/api/payroll/generate?org_id=${orgId}&month=${month}&year=${year}&working_days=${parseInt(workingDays)}`, { adjustments: Object.keys(adj).length > 0 ? adj : undefined });
+      await api.post('/api/payroll/generate', { org_id: orgId, month, year, working_days: parseInt(workingDays), adjustments: Object.keys(adj).length > 0 ? adj : undefined });
       setShowGenerate(false);
       setAdjustments({});
       fetchData();
@@ -239,6 +320,7 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
   const renderItem = ({ item }: { item: any }) => {
     const a = avatarColor(item.employee_name || '?');
     const isPaid = item.status === 'Paid';
+    const isDraft = item.status === 'Draft';
     const presentRatio = item.working_days > 0 ? (item.present_days / item.working_days) : 0;
     return (
       <TouchableOpacity
@@ -256,17 +338,32 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
             <Text style={s.empName} numberOfLines={1}>
               {item.employee_name || `Employee #${item.employee_id}`}
             </Text>
-            <View style={[
-              s.statusPill,
-              isPaid ? { backgroundColor: '#dcfce7' } : { backgroundColor: '#fef3c7' },
-            ]}>
-              <Ionicons
-                name={isPaid ? 'checkmark-circle' : 'time-outline'}
-                size={10}
-                color={isPaid ? '#15803d' : '#b45309'}
-              />
-              <Text style={[s.statusText, { color: isPaid ? '#15803d' : '#b45309' }]}>
-                {item.status}
+            {item.status ? (
+              <View style={[
+                s.statusPill,
+                isPaid ? { backgroundColor: '#dcfce7' } : { backgroundColor: '#fef3c7' },
+              ]}>
+                <Ionicons
+                  name={isPaid ? 'checkmark-circle' : 'time-outline'}
+                  size={10}
+                  color={isPaid ? '#15803d' : '#b45309'}
+                />
+                <Text style={[s.statusText, { color: isPaid ? '#15803d' : '#b45309' }]}>
+                  {item.status}
+                </Text>
+              </View>
+            ) : (
+              <View style={[s.statusPill, { backgroundColor: '#f3f4f6' }]}>
+                <Text style={[s.statusText, { color: '#9ca3af' }]}>—</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Salary type badge */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
+            <View style={{ backgroundColor: item.salary_type === 'daily' ? '#dbeafe' : '#ede9fe', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+              <Text style={{ fontSize: 9, fontWeight: '700', color: item.salary_type === 'daily' ? '#1d4ed8' : '#6d28d9', textTransform: 'uppercase' }}>
+                {item.salary_type || 'monthly'}
               </Text>
             </View>
           </View>
@@ -275,39 +372,60 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
           <View style={s.attBar}>
             <View style={[s.attFill, { width: `${presentRatio * 100}%` }]} />
           </View>
+
+          {/* Attendance row: Present / Absent / Leave */}
+          <View style={s.metaRow}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#16a34a' }}>
+              {item.present_days} Present
+            </Text>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#dc2626' }}>
+              {item.absent_days} Absent
+            </Text>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#d97706' }}>
+              {item.leave_days} Leave
+            </Text>
+            <Text style={s.metaText}>
+              {item.working_days} Days
+            </Text>
+          </View>
+
+          {/* Salary details: Gross / Earned / Bonus / Deductions */}
           <View style={s.metaRow}>
             <Text style={s.metaText}>
-              {item.present_days}/{item.working_days} days
+              Gross ₹{Number(item.salary_amount || 0).toLocaleString('en-IN')}
             </Text>
-            <Text style={s.metaText}>
-              Earned ₹{Number(item.earned_amount || 0).toLocaleString('en-IN')}
+            <Text style={{ fontSize: 11, fontWeight: '600', color: '#059669' }}>
+              Earned ₹{Number(item.earned_amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
             </Text>
-            {item.deductions > 0 ? (
-              <Text style={[s.metaText, { color: colors.danger }]}>
+            {item.generated && item.bonus > 0 ? (
+              <Text style={{ fontSize: 11, fontWeight: '600', color: '#2563eb' }}>
+                Bonus +₹{Number(item.bonus).toLocaleString('en-IN')}
+              </Text>
+            ) : null}
+            {item.generated && item.deductions > 0 ? (
+              <Text style={{ fontSize: 11, fontWeight: '600', color: '#dc2626' }}>
                 Ded. -₹{Number(item.deductions).toLocaleString('en-IN')}
               </Text>
             ) : null}
           </View>
 
+          {/* Net Pay row */}
           <View style={s.netRow}>
             <Text style={s.netLabel}>Net Pay</Text>
-            <Text style={s.netValue}>
-              ₹{Number(item.net_pay || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-            </Text>
+            {item.generated ? (
+              <Text style={s.netValue}>
+                ₹{Number(item.net_pay || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </Text>
+            ) : (
+              <Text style={[s.netValue, { color: '#9ca3af', fontSize: 13 }]}>—</Text>
+            )}
           </View>
 
-          {(parseFloat(item.bonus || 0) > 0 || parseFloat(item.incentives || 0) > 0) && (
-            <View style={s.metaRow}>
-              {parseFloat(item.bonus || 0) > 0 && <Text style={[s.metaText, { color: '#3b82f6' }]}>Bonus +₹{Number(item.bonus).toLocaleString('en-IN')}</Text>}
-              {parseFloat(item.incentives || 0) > 0 && <Text style={[s.metaText, { color: '#3b82f6' }]}>Incentives +₹{Number(item.incentives).toLocaleString('en-IN')}</Text>}
-            </View>
-          )}
-
-          {!isPaid && (
+          {isDraft && (
             <View style={s.actionRow}>
               <TouchableOpacity
                 style={s.payBtn}
-                onPress={() => markPaid(item.id, item.employee_name || 'employee')}
+                onPress={() => markPaid(item.payroll_id, item.employee_name || 'employee')}
                 activeOpacity={0.85}
               >
                 <Ionicons name="checkmark-done" size={13} color="#fff" />
@@ -315,7 +433,7 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
               </TouchableOpacity>
               <TouchableOpacity
                 style={s.deleteMini}
-                onPress={() => deletePayroll(item.id)}
+                onPress={() => deletePayroll(item.payroll_id)}
                 activeOpacity={0.85}
               >
                 <Ionicons name="trash-outline" size={13} color={colors.danger} />
@@ -334,7 +452,7 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
     <View style={s.container}>
       <FlatList
         data={filtered}
-        keyExtractor={(i, idx) => i?.id != null ? `pr-${i.id}` : `pr-${idx}`}
+        keyExtractor={(i, idx) => `emp-${i?.employee_id ?? idx}`}
         renderItem={renderItem}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} />}
         contentContainerStyle={{ paddingBottom: 100 }}
@@ -345,9 +463,9 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
               <View style={s.heroAccent} />
               <View style={s.heroTopRow}>
                 <View>
-                  <Text style={s.heroEyebrow}>Total Net Pay</Text>
+                  <Text style={s.heroEyebrow}>{isGenerated ? 'Total Net Pay' : 'Total Earned'}</Text>
                   <Text style={s.heroValue}>
-                    ₹{stats.totalNet.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                    ₹{(isGenerated ? stats.totalNet : stats.totalEarned).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                   </Text>
                   <Text style={s.heroSub}>
                     {stats.total} employees • {stats.paid} paid • {stats.draft} pending
@@ -429,11 +547,27 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
               </View>
             </View>
 
+            {/* Generate Payroll banner (when not generated) */}
+            {!isGenerated && !loading && tableData.length > 0 && (
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  marginHorizontal: spacing.md, marginBottom: 8,
+                  backgroundColor: '#059669', borderRadius: 12, paddingVertical: 12,
+                }}
+                onPress={openGenerateModal}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="calculator" size={16} color="#fff" />
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>Generate Payroll for {MONTHS_SHORT[month - 1]} {year}</Text>
+              </TouchableOpacity>
+            )}
+
             {/* Status chips */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipScroll}>
               {STATUSES.map(st => {
                 const active = statusFilter === st;
-                const tone = st === 'Paid' ? '#15803d' : st === 'Draft' ? '#b45309' : colors.primary;
+                const tone = st === 'Paid' ? '#15803d' : st === 'Draft' ? '#b45309' : st === 'Not Generated' ? '#9ca3af' : colors.primary;
                 return (
                   <TouchableOpacity
                     key={st}
@@ -452,8 +586,8 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
         ListEmptyComponent={loading ? (
           <SkeletonList count={6} />
         ) : (
-          <View style={{ paddingTop: 30 }}>
-            <EmptyState icon="wallet-outline" title="No payroll" subtitle="Tap calculator to generate" />
+          <View style={{ paddingTop: 30, alignItems: 'center' }}>
+            <EmptyState icon="people-outline" title="No employees found" subtitle="Add employees first to manage payroll" />
           </View>
         )}
       />
