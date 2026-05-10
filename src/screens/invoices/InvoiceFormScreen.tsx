@@ -21,6 +21,7 @@ interface LineItem {
   discount_percent: number;
   tax_rate: number;
   amount: number;
+  serial_numbers: string;
 }
 
 export default function InvoiceFormScreen({ route, navigation }: { route: any; navigation: any }) {
@@ -52,6 +53,18 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
   const [qaSaving, setQaSaving] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
   const [itemSearch, setItemSearch] = useState('');
+  const [contractors, setContractors] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [contractorId, setContractorId] = useState<number | null>(null);
+  const [contractorCommissionPercent, setContractorCommissionPercent] = useState('0');
+  const [salespersonEmployeeId, setSalespersonEmployeeId] = useState<number | null>(null);
+  const [salespersonName, setSalespersonName] = useState('');
+  const [enableUpiQr, setEnableUpiQr] = useState(false);
+  const [upiIdConfigured, setUpiIdConfigured] = useState(false);
+  const [showContractorPicker, setShowContractorPicker] = useState(false);
+  const [showSalespersonPicker, setShowSalespersonPicker] = useState(false);
+  const [contractorSearch, setContractorSearch] = useState('');
+  const [salespersonSearch, setSalespersonSearch] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -60,12 +73,18 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
         const oid = biz.data[0]?.org_id;
         if (!oid) return;
         setOrgId(oid);
-        const [custRes, itemRes] = await Promise.all([
+        const [custRes, itemRes, contRes, empRes, settRes] = await Promise.all([
           api.get(`/api/customers?org_id=${oid}`),
           api.get(`/api/items?org_id=${oid}`),
+          api.get(`/api/contractors?org_id=${oid}`).catch(() => ({ data: [] })),
+          api.get(`/api/employees?org_id=${oid}&status=Active`).catch(() => ({ data: [] })),
+          api.get(`/api/invoice-settings?org_id=${oid}`).catch(() => ({ data: {} })),
         ]);
         setCustomers(custRes.data);
         setItems(itemRes.data);
+        setContractors(Array.isArray(contRes.data) ? contRes.data : []);
+        setEmployees(Array.isArray(empRes.data) ? empRes.data : []);
+        if (settRes.data?.upi_id) { setUpiIdConfigured(true); setEnableUpiQr(true); }
 
         if (editId) {
           const inv = (await api.get(`/api/invoices/${editId}`)).data;
@@ -78,12 +97,21 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
           setDiscountValue(String(inv.discount_value || 0));
           setFreightCharges(String(inv.freight_charges ?? 0));
           setRoundOffEnabled(Math.abs(inv.round_off ?? 0) > 0);
+          if (inv.contractor_id) {
+            setContractorId(inv.contractor_id);
+            setContractorCommissionPercent(String(inv.contractor_commission_percent || 0));
+          }
+          if (inv.salesperson_employee_id) {
+            setSalespersonEmployeeId(inv.salesperson_employee_id);
+            setSalespersonName(inv.salesperson_name || '');
+          }
+          if (inv.enable_upi_qr) setEnableUpiQr(true);
           setLineItems((inv.items || []).map((it: any) => ({
             item_id: it.item_id, item_name: it.item_name, description: it.description || '',
             hsn_code: it.hsn_code || '',
             unit: it.unit || '', qty: it.qty, rate: it.rate,
             discount_percent: it.discount_percent || 0, tax_rate: it.tax_rate || 0,
-            amount: it.amount,
+            amount: it.amount, serial_numbers: it.serial_numbers || '',
           })));
         }
       } catch {}
@@ -101,7 +129,7 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
       item_id: item.id, item_name: item.item_name, description: item.description || '',
       hsn_code: isPrivate ? '' : (item.hsn_code || ''),
       unit: item.unit || 'Nos', qty: 1, rate: item.sale_price || 0,
-      discount_percent: 0, tax_rate: isPrivate ? 0 : (item.tax_rate || 0), amount: 0,
+      discount_percent: 0, tax_rate: isPrivate ? 0 : (item.tax_rate || 0), amount: 0, serial_numbers: '',
     }]);
     setShowItemPicker(false);
   };
@@ -111,7 +139,7 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
       item_id: undefined, item_name: '', description: '',
       hsn_code: '',
       unit: 'Nos', qty: 1, rate: 0,
-      discount_percent: 0, tax_rate: 0, amount: 0,
+      discount_percent: 0, tax_rate: 0, amount: 0, serial_numbers: '',
     }]);
     setShowItemPicker(false);
   };
@@ -133,6 +161,9 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
     return sum + (base * li.tax_rate / 100);
   }, 0);
   const discAmt = discountType === 'percentage' ? subtotal * parseFloat(discountValue || '0') / 100 : parseFloat(discountValue || '0');
+  const commissionPercent = parseFloat(contractorCommissionPercent) || 0;
+  const commissionBase = Math.max(subtotal - discAmt, 0);
+  const commissionAmount = contractorId ? (commissionBase * commissionPercent) / 100 : 0;
   const freight = parseFloat(freightCharges || '0') || 0;
   const rawTotal = subtotal - discAmt + taxAmount + freight;
   const total = roundOffEnabled ? Math.round(rawTotal) : rawTotal;
@@ -149,12 +180,17 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
         notes, discount_type: discountType, discount_value: parseFloat(discountValue || '0'),
         freight_charges: freight,
         round_off_enabled: roundOffEnabled,
+        contractor_id: contractorId,
+        contractor_commission_percent: contractorId ? commissionPercent : null,
+        salesperson_employee_id: salespersonEmployeeId,
+        enable_upi_qr: enableUpiQr,
         items: lineItems.map(li => ({
           item_id: li.item_id, item_name: li.item_name, description: li.description,
           hsn_code: li.hsn_code || null,
           unit: li.unit, qty: li.qty, rate: li.rate,
           discount_percent: li.discount_percent, tax_rate: li.tax_rate,
           amount: calcLineAmount(li),
+          serial_numbers: li.serial_numbers || null,
         })),
       };
       let invId = editId;
@@ -233,6 +269,47 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
           </View>
         </View>
 
+        {/* Contractor & Salesperson */}
+        {!isPrivate && (
+        <View style={styles.card}>
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Contractor</Text>
+              <TouchableOpacity style={styles.pickerBtn} onPress={() => setShowContractorPicker(true)}>
+                <Text style={contractorId ? styles.pickerText : styles.pickerPlaceholder}>
+                  {contractorId ? (contractors.find(c => c.id === contractorId)?.business_name || contractors.find(c => c.id === contractorId)?.name || 'Selected') : 'Optional'}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color={colors.gray400} />
+              </TouchableOpacity>
+              {contractorId ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 6 }}>
+                  <TextInput style={[styles.miniInput, { width: 60, textAlign: 'center' }]} value={contractorCommissionPercent} onChangeText={setContractorCommissionPercent} keyboardType="decimal-pad" />
+                  <Text style={{ fontSize: 12, color: colors.gray500 }}>%</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginLeft: 'auto' }}>₹{commissionAmount.toFixed(2)}</Text>
+                  <TouchableOpacity onPress={() => { setContractorId(null); setContractorCommissionPercent('0'); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={18} color={colors.gray400} />
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
+            <View style={{ flex: 1, marginLeft: spacing.sm }}>
+              <Text style={styles.label}>Sales Person</Text>
+              <TouchableOpacity style={styles.pickerBtn} onPress={() => setShowSalespersonPicker(true)}>
+                <Text style={salespersonEmployeeId ? styles.pickerText : styles.pickerPlaceholder}>
+                  {salespersonName || 'Optional'}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color={colors.gray400} />
+              </TouchableOpacity>
+              {salespersonEmployeeId ? (
+                <TouchableOpacity onPress={() => { setSalespersonEmployeeId(null); setSalespersonName(''); }} style={{ alignSelf: 'flex-end', marginTop: 4 }}>
+                  <Ionicons name="close-circle" size={18} color={colors.gray400} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        </View>
+        )}
+
         {/* Line Items */}
         <View style={styles.card}>
           <View style={styles.sectionHeader}>
@@ -261,12 +338,12 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
                     <Text style={styles.miniLabel}>Unit</Text>
                     <TextInput style={styles.miniInput} value={li.unit} onChangeText={v => updateLine(idx, 'unit', v)} placeholder="Nos" placeholderTextColor={colors.placeholder} />
                   </View>
-                  <View style={{ flex: 2, marginLeft: 8 }}>
-                    <Text style={styles.miniLabel}>Description</Text>
-                    <TextInput style={styles.miniInput} value={li.description} onChangeText={v => updateLine(idx, 'description', v)} placeholder="Optional" placeholderTextColor={colors.placeholder} />
-                  </View>
                 </View>
               )}
+              <View style={{ marginTop: 6 }}>
+                <Text style={styles.miniLabel}>Description</Text>
+                <TextInput style={[styles.miniInput, { minHeight: 48, textAlignVertical: 'top' }]} value={li.description} onChangeText={v => updateLine(idx, 'description', v)} placeholder="Item description" placeholderTextColor={colors.placeholder} multiline numberOfLines={2} />
+              </View>
               {!isPrivate && (
               <View style={styles.row}>
                 <View style={{ flex: 1 }}>
@@ -290,6 +367,10 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
                   <TextInput style={styles.miniInput} value={String(li.tax_rate)} onChangeText={v => updateLine(idx, 'tax_rate', parseFloat(v) || 0)} keyboardType="decimal-pad" />
                 </View>
                 )}
+              </View>
+              <View style={{ marginTop: 6 }}>
+                <Text style={styles.miniLabel}>Serial Numbers</Text>
+                <TextInput style={[styles.miniInput, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, color: '#2563eb' }]} value={li.serial_numbers} onChangeText={v => updateLine(idx, 'serial_numbers', v)} placeholder="Serial nos (comma separated)" placeholderTextColor="#93c5fd" />
               </View>
               <Text style={styles.lineAmt}>Amount: ₹{calcLineAmount(li).toFixed(2)}</Text>
             </View>
@@ -342,6 +423,30 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
               <View style={[styles.toggleDot, roundOffEnabled && styles.toggleDotActive]} />
             </TouchableOpacity>
           </View>
+
+          {/* UPI QR toggle */}
+          {upiIdConfigured && (
+            <View style={styles.roundOffRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.roundOffLabel}>UPI QR Code</Text>
+                <Text style={styles.roundOffSub}>Dynamic QR on invoice</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.toggleBtn, enableUpiQr && styles.toggleBtnActive]}
+                onPress={() => setEnableUpiQr(v => !v)}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.toggleDot, enableUpiQr && styles.toggleDotActive]} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {contractorId ? (
+            <View style={styles.sumRow}>
+              <Text style={styles.sumLabel}>Commission ({commissionPercent.toFixed(1)}%)</Text>
+              <Text style={styles.sumVal}>₹{commissionAmount.toFixed(2)}</Text>
+            </View>
+          ) : null}
 
           <View style={[styles.sumRow, { borderTopWidth: 1, borderTopColor: colors.gray200, paddingTop: spacing.sm }]}>
             <Text style={styles.totalLabel}>Total</Text>
@@ -487,6 +592,56 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* Contractor Picker Modal */}
+      <Modal visible={showContractorPicker} animationType="slide" onRequestClose={() => setShowContractorPicker(false)}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Contractor</Text>
+            <TouchableOpacity onPress={() => setShowContractorPicker(false)} style={{ padding: 8 }}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <TextInput style={styles.modalSearch} value={contractorSearch} onChangeText={setContractorSearch} placeholder="Search contractors..." placeholderTextColor={colors.placeholder} />
+          <FlatList
+            data={contractorSearch ? contractors.filter(c => (c.name || '').toLowerCase().includes(contractorSearch.toLowerCase()) || (c.business_name || '').toLowerCase().includes(contractorSearch.toLowerCase())) : contractors}
+            keyExtractor={c => String(c.id)}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => (
+              <TouchableOpacity style={styles.modalItem} onPress={() => { setContractorId(item.id); setContractorCommissionPercent(String(item.commission_percent || 0)); setShowContractorPicker(false); }}>
+                <Text style={styles.modalItemText}>{item.business_name || item.name}</Text>
+                <Text style={styles.modalItemSub}>{item.name} · {item.commission_percent}% commission</Text>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={<View style={{ padding: spacing.lg, alignItems: 'center' }}><Text style={{ color: colors.gray500 }}>No contractors found</Text></View>}
+          />
+        </View>
+      </Modal>
+
+      {/* Salesperson Picker Modal */}
+      <Modal visible={showSalespersonPicker} animationType="slide" onRequestClose={() => setShowSalespersonPicker(false)}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Sales Person</Text>
+            <TouchableOpacity onPress={() => setShowSalespersonPicker(false)} style={{ padding: 8 }}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <TextInput style={styles.modalSearch} value={salespersonSearch} onChangeText={setSalespersonSearch} placeholder="Search employees..." placeholderTextColor={colors.placeholder} />
+          <FlatList
+            data={salespersonSearch ? employees.filter(e => (e.name || '').toLowerCase().includes(salespersonSearch.toLowerCase())) : employees}
+            keyExtractor={e => String(e.id)}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => (
+              <TouchableOpacity style={styles.modalItem} onPress={() => { setSalespersonEmployeeId(item.id); setSalespersonName(item.name); setShowSalespersonPicker(false); }}>
+                <Text style={styles.modalItemText}>{item.name}</Text>
+                <Text style={styles.modalItemSub}>{item.email || item.mobile || ''}</Text>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={<View style={{ padding: spacing.lg, alignItems: 'center' }}><Text style={{ color: colors.gray500 }}>No employees found</Text></View>}
+          />
         </View>
       </Modal>
     </KeyboardAvoidingView>

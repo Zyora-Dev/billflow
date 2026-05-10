@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, Share, Linking } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, Share, Linking, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -236,6 +236,25 @@ export default function InvoiceDetailScreen({ route, navigation }: { route: any;
         </View>
       </View>
 
+      {/* SALESPERSON */}
+      {invoice.salesperson_name ? (
+        <View style={{ marginHorizontal: spacing.md, marginBottom: 6, paddingHorizontal: spacing.sm }}>
+          <Text style={{ fontSize: 11, color: colors.gray500 }}>Sales Person: <Text style={{ fontWeight: '600', color: colors.text }}>{invoice.salesperson_name}</Text></Text>
+        </View>
+      ) : null}
+
+      {/* IRN / E-INVOICE */}
+      {invoice.irn ? (
+        <View style={{ marginHorizontal: spacing.md, marginBottom: spacing.sm, backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#bbf7d0', borderRadius: borderRadius.md, padding: spacing.md, flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' }}>
+          <Ionicons name="shield-checkmark" size={20} color="#16a34a" />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#166534' }}>E-Invoice Generated</Text>
+            <Text style={{ fontSize: 11, color: '#15803d', marginTop: 2 }} numberOfLines={2}>IRN: {invoice.irn}</Text>
+            {invoice.irn_ack_no ? <Text style={{ fontSize: 11, color: '#16a34a', marginTop: 1 }}>Ack No: {invoice.irn_ack_no} · Ack Date: {invoice.irn_ack_date}</Text> : null}
+          </View>
+        </View>
+      ) : null}
+
       {/* PAYMENT PROGRESS */}
       {invoice.total > 0 && (
         <View style={s.progressCard}>
@@ -291,6 +310,18 @@ export default function InvoiceDetailScreen({ route, navigation }: { route: any;
           <View style={[s.qIcon, { backgroundColor: '#f3e8ff' }]}><Ionicons name="car-outline" size={20} color="#7c3aed" /></View>
           <Text style={s.qLabel}>E-Way</Text>
         </TouchableOpacity>
+        {!invoice.irn && (
+          <TouchableOpacity style={s.qAction} onPress={async () => {
+            try {
+              const res = await api.post(`/api/invoices/${id}/generate-irn`);
+              Alert.alert('IRN Generated', res.data?.irn || 'Success');
+              fetchInvoice();
+            } catch (e: any) { Alert.alert('Error', e.response?.data?.detail || 'Failed to generate IRN'); }
+          }}>
+            <View style={[s.qIcon, { backgroundColor: '#dcfce7' }]}><Ionicons name="shield-checkmark-outline" size={20} color="#16a34a" /></View>
+            <Text style={s.qLabel}>IRN</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* PAY CTA */}
@@ -368,6 +399,7 @@ export default function InvoiceDetailScreen({ route, navigation }: { route: any;
               <CurrencyText amount={item.amount} style={s.itemAmt} />
             </View>
             {item.description ? <Text style={s.itemDesc} numberOfLines={2}>{item.description}</Text> : null}
+            {item.serial_numbers ? <Text style={{ fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: '#2563eb', marginTop: 2, marginLeft: 30 }}>S/N: {item.serial_numbers}</Text> : null}
             <View style={s.itemMetaRow}>
               <View style={s.metaChip}>
                 <Ionicons name="layers-outline" size={10} color={colors.gray600} />

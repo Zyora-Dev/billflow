@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl,
-  ScrollView, TextInput, Alert,
+  ScrollView, TextInput, Alert, Linking, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import api from '../../api/client';
+import api, { BASE_URL } from '../../api/client';
 import { colors, spacing } from '../../theme';
 import EmptyState from '../../components/EmptyState';
 import { SkeletonList } from '../../components/Skeleton';
@@ -16,6 +16,7 @@ const FILTERS = [
   { value: 'upcoming',  label: 'Upcoming',    icon: 'time' as const },
   { value: 'task',      label: 'Tasks',       icon: 'checkbox' as const },
   { value: 'payment',   label: 'Payments',    icon: 'cash' as const },
+  { value: 'announcement', label: 'Announce',  icon: 'megaphone' as const },
 ];
 
 const PRIO: Record<string, { color: string; bg: string; label: string }> = {
@@ -26,6 +27,7 @@ const PRIO: Record<string, { color: string; bg: string; label: string }> = {
 
 function getIcon(type: string): keyof typeof Ionicons.glyphMap {
   if (!type) return 'notifications';
+  if (type.includes('announcement')) return 'megaphone';
   if (type.includes('overdue_invoice') || type.includes('upcoming_invoice')) return 'document-text';
   if (type.includes('overdue_bill') || type.includes('upcoming_bill')) return 'receipt';
   if (type.includes('stock')) return 'cube';
@@ -71,11 +73,24 @@ export default function NotificationsScreen({ navigation }: { navigation: any })
       const oid = biz.data[0]?.org_id;
       if (oid) {
         setOrgId(oid);
-        const [nRes, cRes] = await Promise.all([
+        const [nRes, cRes, annRes] = await Promise.all([
           api.get(`/api/notifications?org_id=${oid}`),
           api.get(`/api/notifications/count?org_id=${oid}`),
+          api.get('/api/announcements').catch(() => ({ data: [] })),
         ]);
-        setNotifications(nRes.data || []);
+        // Merge announcements as notification items
+        const announcements = (annRes.data || []).map((a: any) => ({
+          id: `ann-${a.id}`,
+          title: a.title,
+          message: a.content,
+          type: 'announcement',
+          priority: a.priority === 'urgent' ? 'high' : a.priority === 'important' ? 'medium' : 'low',
+          date: a.created_at,
+          image: a.image,
+          link: a.link,
+          entity_type: null, entity_id: null,
+        }));
+        setNotifications([...announcements, ...(nRes.data || [])]);
         setCounts(cRes.data || { high: 0, medium: 0, low: 0, total: 0 });
         // Auto-mark all as read once the user views the screen — bell clears automatically
         if ((cRes.data?.total || 0) > 0) {
@@ -169,6 +184,15 @@ export default function NotificationsScreen({ navigation }: { navigation: any })
             </View>
           </View>
           {item.message ? <Text style={styles.message} numberOfLines={2}>{item.message}</Text> : null}
+          {item.image ? (
+            <Image source={{ uri: `${BASE_URL}/${item.image}` }} style={{ height: 80, borderRadius: 8, marginTop: 6, backgroundColor: '#f3f4f6' }} resizeMode="cover" />
+          ) : null}
+          {item.link ? (
+            <TouchableOpacity onPress={() => Linking.openURL(item.link)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+              <Ionicons name="link-outline" size={12} color="#6366f1" />
+              <Text style={{ fontSize: 11, color: '#6366f1' }} numberOfLines={1}>{item.link}</Text>
+            </TouchableOpacity>
+          ) : null}
           {item.created_at ? (
             <View style={styles.metaRow}>
               <Ionicons name="time-outline" size={11} color={colors.gray500} />

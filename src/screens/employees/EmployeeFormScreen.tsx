@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
-  ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator,
+  ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import api from '../../api/client';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import api, { BASE_URL } from '../../api/client';
 import { useToast } from '../../components/Toast';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import DateInput from '../../components/DateInput';
@@ -19,12 +21,20 @@ const STATUSES = [
   { value: 'Inactive', label: 'Inactive', color: '#9ca3af' },
 ];
 
+const EMP_TYPES = [
+  { value: 'Full Time', label: 'Full Time', icon: 'person' as const, color: '#3b82f6' },
+  { value: 'Part Time', label: 'Part Time', icon: 'time' as const, color: '#f59e0b' },
+  { value: 'Contract',  label: 'Contract',  icon: 'document-text' as const, color: '#8b5cf6' },
+  { value: 'Freelancer', label: 'Freelancer', icon: 'globe' as const, color: '#0ea5e9' },
+];
+
 export default function EmployeeFormScreen({ route, navigation }: { route: any; navigation: any }) {
   const toast = useToast();
   const editId = route.params?.id;
   const [form, setForm] = useState({
     name: '', email: '', mobile: '',
     pan: '', aadhaar: '',
+    designation: '', department: '', emp_type: '',
     bank_name: '', bank_account: '', bank_ifsc: '', bank_branch: '',
     salary_type: 'monthly',
     salary_amount: '',
@@ -34,17 +44,92 @@ export default function EmployeeFormScreen({ route, navigation }: { route: any; 
   const [orgId, setOrgId] = useState('');
   const [loading, setLoading] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
+  const [metaDesignations, setMetaDesignations] = useState<string[]>([]);
+  const [metaDepartments, setMetaDepartments] = useState<string[]>([]);
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [pendingUploads, setPendingUploads] = useState<{ uri: string; name: string; type: string; docType: string }[]>([]);
+
+  const pickDocument = (docType: string) => {
+    const typeLabel = docType === 'aadhaar' ? 'Aadhaar Card' : docType === 'pan' ? 'PAN Card' : 'Document';
+    Alert.alert(`Upload ${typeLabel}`, 'Choose source', [
+      {
+        text: 'Camera', onPress: async () => {
+          const perm = await ImagePicker.requestCameraPermissionsAsync();
+          if (!perm.granted) { Alert.alert('Permission needed', 'Camera permission required'); return; }
+          const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+          if (!result.canceled && result.assets?.[0]) {
+            const a = result.assets[0];
+            if (editId) { uploadDocNow(a, docType); } else { setPendingUploads(p => [...p, { uri: a.uri, name: a.fileName || `${docType}_${Date.now()}.jpg`, type: a.type || 'image/jpeg', docType }]); }
+          }
+        },
+      },
+      {
+        text: 'Photo Library', onPress: async () => {
+          const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (!perm.granted) { Alert.alert('Permission needed', 'Gallery permission required'); return; }
+          const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8 });
+          if (!result.canceled && result.assets?.[0]) {
+            const a = result.assets[0];
+            if (editId) { uploadDocNow(a, docType); } else { setPendingUploads(p => [...p, { uri: a.uri, name: a.fileName || `${docType}_${Date.now()}.jpg`, type: a.type || 'image/jpeg', docType }]); }
+          }
+        },
+      },
+      {
+        text: 'Files', onPress: async () => {
+          const result = await DocumentPicker.getDocumentAsync({ type: ['image/*', 'application/pdf'], copyToCacheDirectory: true });
+          if (!result.canceled && result.assets?.[0]) {
+            const a = result.assets[0];
+            if (editId) { uploadDocNow({ uri: a.uri, fileName: a.name, type: a.mimeType } as any, docType); } else { setPendingUploads(p => [...p, { uri: a.uri, name: a.name || 'file', type: a.mimeType || 'application/octet-stream', docType }]); }
+          }
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const uploadDocNow = async (asset: any, docType: string) => {
+    setUploadingDoc(true);
+    try {
+      const fd = new FormData();
+      fd.append('doc_type', docType);
+      fd.append('file', { uri: asset.uri, name: asset.fileName || asset.name || `${docType}.jpg`, type: asset.type || asset.mimeType || 'image/jpeg' } as any);
+      await api.post(`/api/employees/${editId}/documents`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const docsRes = await api.get(`/api/employees/${editId}/documents`);
+      setDocuments(Array.isArray(docsRes.data) ? docsRes.data : []);
+    } catch (e: any) { Alert.alert('Error', e?.response?.data?.detail || 'Upload failed'); } finally { setUploadingDoc(false); }
+  };
+
+  const handleDeleteExistingDoc = (docId: number, fileName: string) => {
+    Alert.alert('Delete Document', `Remove ${fileName}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try {
+          await api.delete(`/api/employees/${editId}/documents/${docId}`);
+          setDocuments(d => d.filter(x => x.id !== docId));
+        } catch { Alert.alert('Error', 'Failed to delete'); }
+      }},
+    ]);
+  };
 
   useEffect(() => {
     (async () => {
       try {
         const r = await api.get('/api/business');
-        setOrgId(r.data[0]?.org_id || '');
+        const oid = r.data[0]?.org_id || '';
+        setOrgId(oid);
+        // Fetch meta options for autocomplete
+        try {
+          const meta = await api.get(`/api/employees/meta/options?org_id=${oid}`);
+          setMetaDesignations(meta.data.designations || []);
+          setMetaDepartments(meta.data.departments || []);
+        } catch {}
         if (editId) {
           const e = (await api.get(`/api/employees/${editId}`)).data;
           setForm({
             name: e.name || '', email: e.email || '', mobile: e.mobile || '',
             pan: e.pan || '', aadhaar: e.aadhaar || '',
+            designation: e.designation || '', department: e.department || '', emp_type: e.emp_type || '',
             bank_name: e.bank_name || '', bank_account: e.bank_account || '',
             bank_ifsc: e.bank_ifsc || '', bank_branch: e.bank_branch || '',
             salary_type: e.salary_type || 'monthly',
@@ -52,6 +137,11 @@ export default function EmployeeFormScreen({ route, navigation }: { route: any; 
             joining_date: e.joining_date || '',
             status: e.status || 'Active',
           });
+          // Fetch docs for edit mode
+          try {
+            const docsRes = await api.get(`/api/employees/${editId}/documents`);
+            setDocuments(Array.isArray(docsRes.data) ? docsRes.data : []);
+          } catch {}
         }
       } catch {} finally { setBootstrapping(false); }
     })();
@@ -64,8 +154,22 @@ export default function EmployeeFormScreen({ route, navigation }: { route: any; 
     setLoading(true);
     try {
       const body = { ...form, salary_amount: parseFloat(form.salary_amount) || 0, org_id: orgId };
-      if (editId) await api.put(`/api/employees/${editId}`, body);
-      else await api.post('/api/employees', body);
+      let empId = editId;
+      if (editId) {
+        await api.put(`/api/employees/${editId}`, body);
+      } else {
+        const res = await api.post('/api/employees', body);
+        empId = res.data?.id;
+      }
+      // Upload pending documents for new employee
+      if (empId && pendingUploads.length > 0) {
+        for (const pu of pendingUploads) {
+          const fd = new FormData();
+          fd.append('doc_type', pu.docType);
+          fd.append('file', { uri: pu.uri, name: pu.name, type: pu.type } as any);
+          try { await api.post(`/api/employees/${empId}/documents`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }); } catch {}
+        }
+      }
       toast.success(editId ? 'Employee updated' : 'Employee created');
       navigation.goBack();
     } catch (e: any) { Alert.alert('Error', e.response?.data?.detail || 'Failed'); } finally { setLoading(false); }
@@ -151,6 +255,67 @@ export default function EmployeeFormScreen({ route, navigation }: { route: any; 
                 keyboardType="number-pad"
               />
             </View>
+          </View>
+        </Section>
+
+        {/* Work Info */}
+        <Section title="Work Info" icon="briefcase-outline">
+          <Label text="Designation" />
+          <TextInput
+            style={st.input}
+            value={form.designation}
+            onChangeText={v => update('designation', v)}
+            placeholder="e.g. Manager, Accountant"
+            placeholderTextColor={colors.placeholder}
+          />
+          {metaDesignations.length > 0 && !form.designation && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {metaDesignations.map(d => (
+                  <TouchableOpacity key={d} onPress={() => update('designation', d)} style={st.suggChip} activeOpacity={0.85}>
+                    <Text style={st.suggText}>{d}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          )}
+
+          <Label text="Department" />
+          <TextInput
+            style={st.input}
+            value={form.department}
+            onChangeText={v => update('department', v)}
+            placeholder="e.g. Sales, Operations"
+            placeholderTextColor={colors.placeholder}
+          />
+          {metaDepartments.length > 0 && !form.department && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {metaDepartments.map(d => (
+                  <TouchableOpacity key={d} onPress={() => update('department', d)} style={st.suggChip} activeOpacity={0.85}>
+                    <Text style={st.suggText}>{d}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          )}
+
+          <Label text="Employee Type" />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {EMP_TYPES.map(t => {
+              const active = form.emp_type === t.value;
+              return (
+                <TouchableOpacity
+                  key={t.value}
+                  style={[st.typeChip, active && { backgroundColor: t.color + '18', borderColor: t.color }]}
+                  onPress={() => update('emp_type', active ? '' : t.value)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name={t.icon} size={12} color={active ? t.color : colors.gray500} />
+                  <Text style={[st.typeChipText, active && { color: t.color }]}>{t.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </Section>
 
@@ -258,6 +423,69 @@ export default function EmployeeFormScreen({ route, navigation }: { route: any; 
               />
             </View>
           </View>
+        </Section>
+
+        {/* Documents */}
+        <Section title="Documents" icon="document-text-outline">
+          <View style={st.docUploadRow}>
+            {[{ key: 'aadhaar', label: 'Aadhaar Card', icon: 'finger-print-outline', bg: '#fff7ed', color: '#ea580c' },
+              { key: 'pan', label: 'PAN Card', icon: 'card-outline', bg: '#eff6ff', color: '#2563eb' },
+              { key: 'other', label: 'Other Doc', icon: 'cloud-upload-outline', bg: '#f3f4f6', color: '#6b7280' },
+            ].map(dt => (
+              <TouchableOpacity key={dt.key} style={st.docUploadCard} onPress={() => pickDocument(dt.key)} activeOpacity={0.85}>
+                <View style={[st.docUploadIcon, { backgroundColor: dt.bg }]}>
+                  <Ionicons name={dt.icon as any} size={16} color={dt.color} />
+                </View>
+                <Text style={st.docUploadLabel}>{dt.label}</Text>
+                <Text style={st.docUploadHint}>Tap to upload</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {uploadingDoc && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={{ fontSize: 11, color: colors.gray500 }}>Uploading...</Text>
+            </View>
+          )}
+          {/* Show existing docs (edit mode) + pending uploads (new mode) */}
+          {(documents.length > 0 || pendingUploads.length > 0) && (
+            <View style={{ gap: 6, marginTop: 10 }}>
+              {documents.map(doc => {
+                const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(doc.file_name);
+                const typeLabel = doc.doc_type === 'aadhaar' ? 'Aadhaar' : doc.doc_type === 'pan' ? 'PAN' : 'Doc';
+                return (
+                  <View key={doc.id} style={st.docItem}>
+                    {isImage ? (
+                      <Image source={{ uri: `${BASE_URL}/${doc.file_path}` }} style={st.docThumb} />
+                    ) : (
+                      <View style={[st.docThumb, { backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' }]}>
+                        <Ionicons name="document-text" size={16} color="#9ca3af" />
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={st.docName} numberOfLines={1}>{doc.file_name}</Text>
+                      <Text style={{ fontSize: 9, color: colors.gray400 }}>{typeLabel}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => handleDeleteExistingDoc(doc.id, doc.file_name)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="trash-outline" size={14} color="#dc2626" />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+              {pendingUploads.map((pu, idx) => (
+                <View key={`pending-${idx}`} style={st.docItem}>
+                  <Image source={{ uri: pu.uri }} style={st.docThumb} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.docName} numberOfLines={1}>{pu.name}</Text>
+                    <Text style={{ fontSize: 9, color: '#22c55e', fontWeight: '700' }}>Ready to upload</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setPendingUploads(p => p.filter((_, i) => i !== idx))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={18} color="#dc2626" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
         </Section>
       </ScrollView>
 
@@ -373,4 +601,33 @@ const st = StyleSheet.create({
   btnGhostText: { fontSize: 14, fontWeight: '700', color: colors.gray700 },
   btnPrimary: { flex: 2, flexDirection: 'row', gap: 6, paddingVertical: 13, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary },
   btnPrimaryText: { fontSize: 14, fontWeight: '800', color: '#fff' },
+  typeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: 12, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: '#fff',
+  },
+  typeChipText: { fontSize: 12, fontWeight: '700', color: colors.gray600 },
+  suggChip: {
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 999, backgroundColor: colors.primary + '10',
+    borderWidth: 1, borderColor: colors.primary + '25',
+  },
+  suggText: { fontSize: 11, fontWeight: '700', color: colors.primary },
+
+  docUploadRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  docUploadCard: {
+    flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 12,
+    borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed', backgroundColor: '#fafafa',
+  },
+  docUploadIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  docUploadLabel: { fontSize: 10, fontWeight: '800', color: colors.gray700, textAlign: 'center' },
+  docUploadHint: { fontSize: 8, color: colors.gray400, marginTop: 1 },
+  docItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 6, paddingHorizontal: 8, borderRadius: 10,
+    backgroundColor: '#f9fafb', borderWidth: 1, borderColor: '#f3f4f6',
+  },
+  docThumb: { width: 34, height: 34, borderRadius: 6 },
+  docName: { fontSize: 11, fontWeight: '700', color: colors.gray700 },
 });

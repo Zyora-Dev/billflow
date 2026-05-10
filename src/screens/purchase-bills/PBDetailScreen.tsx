@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, Share, Linking } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, Share, Linking, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -77,7 +77,7 @@ export default function PBDetailScreen({ route, navigation }: { route: any; navi
     const items = (bill.items || []).map((it: any, i: number) => `
       <tr>
         <td style="padding:8px;border-bottom:1px solid #eee">${i + 1}</td>
-        <td style="padding:8px;border-bottom:1px solid #eee">${it.item_name}</td>
+        <td style="padding:8px;border-bottom:1px solid #eee">${it.item_name}${it.serial_numbers ? `<div style="font-family:monospace;font-size:10px;color:#2563eb;margin-top:2px">S/N: ${it.serial_numbers}</div>` : ''}</td>
         <td style="padding:8px;border-bottom:1px solid #eee;font-family:monospace;font-size:11px">${it.hsn_code || '—'}</td>
         <td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${it.qty}</td>
         <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">₹${it.rate?.toFixed(2)}</td>
@@ -228,6 +228,7 @@ export default function PBDetailScreen({ route, navigation }: { route: any; navi
             <View style={s.lineNum}><Text style={s.lineNumText}>{i + 1}</Text></View>
             <View style={{ flex: 1 }}>
               <Text style={s.itemName}>{item.item_name}</Text>
+              {item.serial_numbers ? <Text style={{ fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: '#2563eb', marginTop: 1 }}>S/N: {item.serial_numbers}</Text> : null}
               <Text style={s.itemSub}>
                 {item.qty} {item.unit || 'Nos'} × ₹{item.rate?.toFixed(2)}
                 {item.discount_percent > 0 ? ` • ${item.discount_percent}% off` : ''}

@@ -1,10 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert,
-  ActivityIndicator, Linking,
+  ActivityIndicator, Linking, TextInput, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import api from '../../api/client';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import api, { BASE_URL } from '../../api/client';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 
 const STATUS_CYCLE = ['', 'Present', 'Absent', 'Half Day', 'Leave'];
@@ -47,6 +51,13 @@ export default function EmployeeDetailScreen({ route, navigation }: { route: any
   const [loadingAtt, setLoadingAtt] = useState(false);
   const [generatingPayroll, setGeneratingPayroll] = useState(false);
   const [markingPaid, setMarkingPaid] = useState(false);
+  const [workingDaysInput, setWorkingDaysInput] = useState('26');
+  const [payBonus, setPayBonus] = useState('');
+  const [payIncentives, setPayIncentives] = useState('');
+  const [payDeductions, setPayDeductions] = useState<{type: string; amount: string}[]>([]);
+  const [exportingPayslip, setExportingPayslip] = useState(false);
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
 
   const fetchEmployee = async () => {
     try {
@@ -56,18 +67,91 @@ export default function EmployeeDetailScreen({ route, navigation }: { route: any
     } catch {} return null;
   };
 
+  const fetchDocuments = async () => {
+    try {
+      const res = await api.get(`/api/employees/${id}/documents`);
+      setDocuments(Array.isArray(res.data) ? res.data : []);
+    } catch {}
+  };
+
+  const handleUploadDoc = async (docType: string) => {
+    const typeLabel = docType === 'aadhaar' ? 'Aadhaar Card' : docType === 'pan' ? 'PAN Card' : 'Document';
+    Alert.alert(
+      `Upload ${typeLabel}`,
+      'Choose source',
+      [
+        {
+          text: 'Camera',
+          onPress: async () => {
+            const perm = await ImagePicker.requestCameraPermissionsAsync();
+            if (!perm.granted) { Alert.alert('Permission needed', 'Camera permission is required'); return; }
+            const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+            if (!result.canceled && result.assets?.[0]) uploadFile(result.assets[0], docType);
+          },
+        },
+        {
+          text: 'Photo Library',
+          onPress: async () => {
+            const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (!perm.granted) { Alert.alert('Permission needed', 'Gallery permission is required'); return; }
+            const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8 });
+            if (!result.canceled && result.assets?.[0]) uploadFile(result.assets[0], docType);
+          },
+        },
+        {
+          text: 'Files',
+          onPress: async () => {
+            const result = await DocumentPicker.getDocumentAsync({ type: ['image/*', 'application/pdf'], copyToCacheDirectory: true });
+            if (!result.canceled && result.assets?.[0]) {
+              const a = result.assets[0];
+              uploadFile({ uri: a.uri, fileName: a.name || 'file', type: a.mimeType || 'application/octet-stream' } as any, docType);
+            }
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const uploadFile = async (asset: any, docType: string) => {
+    setUploadingDoc(true);
+    try {
+      const uri = asset.uri;
+      const name = asset.fileName || asset.name || `${docType}_${Date.now()}.jpg`;
+      const type = asset.type || asset.mimeType || 'image/jpeg';
+      const formData = new FormData();
+      formData.append('doc_type', docType);
+      formData.append('file', { uri, name, type } as any);
+      await api.post(`/api/employees/${id}/documents`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      fetchDocuments();
+    } catch (e: any) { Alert.alert('Error', e?.response?.data?.detail || 'Upload failed'); } finally { setUploadingDoc(false); }
+  };
+
+  const handleDeleteDoc = (docId: number, fileName: string) => {
+    Alert.alert('Delete Document', `Delete ${fileName}?`, [
+      { text: 'Cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try { await api.delete(`/api/employees/${id}/documents/${docId}`); fetchDocuments(); } catch {}
+      }},
+    ]);
+  };
+
   const fetchAttendanceAndPayroll = useCallback(async (orgId: string) => {
     if (!orgId) return;
     setLoadingAtt(true);
     try {
-      const [summaryRes, recordsRes, payrollRes] = await Promise.all([
+      const [summaryRes, recordsRes, payrollRes, settingsRes] = await Promise.all([
         api.get(`/api/attendance/summary?org_id=${orgId}&month=${attMonth}&year=${attYear}`),
         api.get(`/api/attendance?org_id=${orgId}&employee_id=${id}&month=${attMonth}&year=${attYear}`),
         api.get(`/api/payroll?org_id=${orgId}&month=${attMonth}&year=${attYear}`),
+        api.get(`/api/payroll-settings?org_id=${orgId}`).catch(() => ({ data: null })),
       ]);
       setAttSummary((summaryRes.data || []).find((a: any) => a.employee_id === id) || null);
       setAttRecords(recordsRes.data || []);
       setPayroll((payrollRes.data || []).find((p: any) => p.employee_id === id) || null);
+      if (settingsRes.data?.default_working_days) {
+        setWorkingDaysInput(String(settingsRes.data.default_working_days));
+      }
     } catch {} finally { setLoadingAtt(false); }
   }, [id, attMonth, attYear]);
 
@@ -75,6 +159,7 @@ export default function EmployeeDetailScreen({ route, navigation }: { route: any
     (async () => {
       const e = await fetchEmployee();
       if (e) fetchAttendanceAndPayroll(e.org_id);
+      fetchDocuments();
     })();
   }, [id]);
 
@@ -86,6 +171,7 @@ export default function EmployeeDetailScreen({ route, navigation }: { route: any
     const unsub = navigation.addListener('focus', async () => {
       const e = await fetchEmployee();
       if (e) fetchAttendanceAndPayroll(e.org_id);
+      fetchDocuments();
     });
     return unsub;
   }, [navigation]);
@@ -121,8 +207,23 @@ export default function EmployeeDetailScreen({ route, navigation }: { route: any
     if (!emp?.org_id) return;
     setGeneratingPayroll(true);
     try {
-      await api.post(`/api/payroll/generate?org_id=${emp.org_id}&month=${attMonth}&year=${attYear}&working_days=26`);
-      await fetchAttendanceAndPayroll(emp.org_id);
+      const deductionRows = payDeductions.filter(d => parseFloat(d.amount) > 0);
+      const totalDeductions = deductionRows.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+      const adjustments: Record<string, any> = {};
+      adjustments[id] = {
+        bonus: parseFloat(payBonus) || 0,
+        incentives: parseFloat(payIncentives) || 0,
+        other_deductions: totalDeductions,
+        deduction_details: deductionRows.length > 0 ? JSON.stringify(deductionRows.map(d => ({ type: d.type, amount: parseFloat(d.amount) || 0 }))) : '',
+      };
+      const res = await api.post('/api/payroll/generate', {
+        org_id: emp.org_id, month: attMonth, year: attYear,
+        working_days: parseInt(workingDaysInput) || 26,
+        adjustments,
+      });
+      const mine = (res.data || []).find((p: any) => p.employee_id === id);
+      setPayroll(mine || null);
+      setPayBonus(''); setPayIncentives(''); setPayDeductions([]);
     } catch (e: any) { Alert.alert('Error', e?.response?.data?.detail || 'Failed'); } finally { setGeneratingPayroll(false); }
   };
 
@@ -133,6 +234,62 @@ export default function EmployeeDetailScreen({ route, navigation }: { route: any
       await api.patch(`/api/payroll/${payroll.id}/pay`);
       await fetchAttendanceAndPayroll(emp.org_id);
     } catch (e: any) { Alert.alert('Error', e?.response?.data?.detail || 'Failed'); } finally { setMarkingPaid(false); }
+  };
+
+  const handleDownloadPayslip = async () => {
+    if (!payroll || !emp) return;
+    setExportingPayslip(true);
+    try {
+      const bonus = parseFloat(payroll.bonus || 0);
+      const incentives = parseFloat(payroll.incentives || 0);
+      let dedRows: any[] = [];
+      try { dedRows = JSON.parse(payroll.deduction_details || '[]'); } catch {}
+
+      const html = `<html><head><meta charset="utf-8"/>
+        <style>
+          body { font-family: -apple-system, sans-serif; padding: 24px; color: #1f2937; }
+          h1 { color: #1a1a40; font-size: 20px; margin: 0 0 4px; }
+          .sub { color: #6b7280; font-size: 11px; margin-bottom: 20px; }
+          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+          .cell { background: #f9fafb; padding: 10px; border-radius: 8px; }
+          .cell .lbl { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; }
+          .cell .val { font-size: 16px; font-weight: 800; color: #1a1a40; margin-top: 2px; }
+          .net { background: #1a1a40; color: #fff; padding: 14px; border-radius: 10px; text-align: center; margin-top: 14px; }
+          .net .lbl { font-size: 10px; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.5px; }
+          .net .val { font-size: 28px; font-weight: 900; margin-top: 4px; }
+          .sep { border-top: 1px solid #e5e7eb; margin: 14px 0; }
+          .status { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+          .paid { background: #dcfce7; color: #15803d; }
+          .draft { background: #fef3c7; color: #b45309; }
+          .ded-row { font-size: 11px; color: #6b7280; margin: 2px 0; }
+        </style></head><body>
+          <h1>Payslip — ${emp.name}</h1>
+          <div class="sub">${MONTH_NAMES[attMonth - 1]} ${attYear} <span class="status ${payroll.status === 'Paid' ? 'paid' : 'draft'}">${payroll.status}</span></div>
+          <div class="grid">
+            <div class="cell"><div class="lbl">Working Days</div><div class="val">${payroll.working_days}</div></div>
+            <div class="cell"><div class="lbl">Present Days</div><div class="val">${payroll.present_days}</div></div>
+            <div class="cell"><div class="lbl">Salary</div><div class="val">₹${Number(payroll.salary_amount || 0).toLocaleString('en-IN')}</div></div>
+            <div class="cell"><div class="lbl">Earned Amount</div><div class="val" style="color:#15803d">₹${Number(payroll.earned_amount || 0).toLocaleString('en-IN')}</div></div>
+          </div>
+          ${bonus > 0 || incentives > 0 ? `<div class="sep"></div><div class="grid">
+            ${bonus > 0 ? `<div class="cell"><div class="lbl">Bonus</div><div class="val" style="color:#3b82f6">+₹${bonus.toLocaleString('en-IN')}</div></div>` : ''}
+            ${incentives > 0 ? `<div class="cell"><div class="lbl">Incentives</div><div class="val" style="color:#3b82f6">+₹${incentives.toLocaleString('en-IN')}</div></div>` : ''}
+          </div>` : ''}
+          <div class="sep"></div>
+          <div class="grid">
+            <div class="cell"><div class="lbl">Total Deductions</div><div class="val" style="color:#dc2626">₹${Number(payroll.deductions || 0).toLocaleString('en-IN')}</div>
+              ${Array.isArray(dedRows) && dedRows.length > 0 ? dedRows.map((d: any) => `<div class="ded-row">${d.type || 'Other'}: ₹${Number(d.amount || 0).toLocaleString('en-IN')}</div>`).join('') : ''}
+            </div>
+          </div>
+          <div class="net">
+            <div class="lbl">Net Pay</div>
+            <div class="val">₹${Number(payroll.net_pay || 0).toLocaleString('en-IN')}</div>
+          </div>
+          ${payroll.paid_date ? `<p style="text-align:center; font-size:10px; color:#6b7280; margin-top:10px;">Paid on ${payroll.paid_date}</p>` : ''}
+        </body></html>`;
+      const { uri } = await Print.printToFileAsync({ html });
+      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
+    } catch { Alert.alert('Error', 'Could not generate payslip'); } finally { setExportingPayslip(false); }
   };
 
   if (!emp) return <View style={st.center}><ActivityIndicator color={colors.primary} /></View>;
@@ -168,6 +325,7 @@ export default function EmployeeDetailScreen({ route, navigation }: { route: any
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={st.heroName}>{emp.name}</Text>
+              {emp.designation ? <Text style={st.heroDesig}>{emp.designation}</Text> : null}
               <View style={st.heroMeta}>
                 <View style={[st.heroStatusPill, { backgroundColor: isActive ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.15)' }]}>
                   <View style={[st.dotSmall, { backgroundColor: isActive ? '#86efac' : '#9ca3af' }]} />
@@ -175,6 +333,17 @@ export default function EmployeeDetailScreen({ route, navigation }: { route: any
                 </View>
                 {emp.joining_date ? (
                   <Text style={st.heroJoined}>Joined {emp.joining_date}</Text>
+                ) : null}
+                {emp.department ? (
+                  <View style={[st.heroStatusPill, { backgroundColor: 'rgba(59,130,246,0.2)' }]}>
+                    <Ionicons name="business-outline" size={9} color="#93c5fd" />
+                    <Text style={st.heroStatusText}>{emp.department}</Text>
+                  </View>
+                ) : null}
+                {emp.emp_type ? (
+                  <View style={[st.heroStatusPill, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+                    <Text style={st.heroStatusText}>{emp.emp_type}</Text>
+                  </View>
                 ) : null}
               </View>
             </View>
@@ -207,6 +376,9 @@ export default function EmployeeDetailScreen({ route, navigation }: { route: any
         {/* Contact info */}
         <View style={st.section}>
           <Text style={st.sectionTitle}>Details</Text>
+          {emp.designation ? <DetailRow icon="ribbon-outline" label="Designation" value={emp.designation} /> : null}
+          {emp.department ? <DetailRow icon="business-outline" label="Department" value={emp.department} /> : null}
+          {emp.emp_type ? <DetailRow icon="briefcase-outline" label="Type" value={emp.emp_type} /> : null}
           <DetailRow icon="call-outline" label="Mobile" value={emp.mobile || '-'} />
           <DetailRow icon="mail-outline" label="Email" value={emp.email || '-'} />
           <DetailRow icon="card-outline" label="PAN" value={emp.pan || '-'} />
@@ -224,6 +396,93 @@ export default function EmployeeDetailScreen({ route, navigation }: { route: any
               </View>
             </View>
           ) : null}
+        </View>
+
+        {/* Documents */}
+        <View style={st.section}>
+          <View style={st.sectionHead}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="document-text-outline" size={14} color={colors.gray500} />
+              <Text style={st.sectionTitle}>Documents</Text>
+            </View>
+            {uploadingDoc && <ActivityIndicator size="small" color={colors.primary} />}
+          </View>
+
+          {/* Quick upload buttons */}
+          <View style={st.docUploadRow}>
+            <TouchableOpacity style={st.docUploadCard} onPress={() => handleUploadDoc('aadhaar')} activeOpacity={0.85}>
+              <View style={[st.docUploadIcon, { backgroundColor: '#fff7ed' }]}>
+                <Ionicons name="finger-print-outline" size={16} color="#ea580c" />
+              </View>
+              <Text style={st.docUploadLabel}>Aadhaar</Text>
+              <Text style={st.docUploadHint}>Upload</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={st.docUploadCard} onPress={() => handleUploadDoc('pan')} activeOpacity={0.85}>
+              <View style={[st.docUploadIcon, { backgroundColor: '#eff6ff' }]}>
+                <Ionicons name="card-outline" size={16} color="#2563eb" />
+              </View>
+              <Text style={st.docUploadLabel}>PAN Card</Text>
+              <Text style={st.docUploadHint}>Upload</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={st.docUploadCard} onPress={() => handleUploadDoc('other')} activeOpacity={0.85}>
+              <View style={[st.docUploadIcon, { backgroundColor: '#f3f4f6' }]}>
+                <Ionicons name="cloud-upload-outline" size={16} color="#6b7280" />
+              </View>
+              <Text style={st.docUploadLabel}>Other</Text>
+              <Text style={st.docUploadHint}>Upload</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Document list */}
+          {documents.length > 0 ? (
+            <View style={{ gap: 6, marginTop: 10 }}>
+              {documents.map(doc => {
+                const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(doc.file_name);
+                const typeLabel = doc.doc_type === 'aadhaar' ? 'Aadhaar' : doc.doc_type === 'pan' ? 'PAN Card' : 'Document';
+                const typeBg = doc.doc_type === 'aadhaar' ? '#fff7ed' : doc.doc_type === 'pan' ? '#eff6ff' : '#f3f4f6';
+                const typeColor = doc.doc_type === 'aadhaar' ? '#ea580c' : doc.doc_type === 'pan' ? '#2563eb' : '#6b7280';
+                return (
+                  <View key={doc.id} style={st.docItem}>
+                    {isImage ? (
+                      <Image source={{ uri: `${BASE_URL}/${doc.file_path}` }} style={st.docThumb} />
+                    ) : (
+                      <View style={[st.docThumb, { backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' }]}>
+                        <Ionicons name="document-text" size={18} color="#9ca3af" />
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={st.docName} numberOfLines={1}>{doc.file_name}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        <View style={[st.docTypeBadge, { backgroundColor: typeBg }]}>
+                          <Text style={[st.docTypeText, { color: typeColor }]}>{typeLabel}</Text>
+                        </View>
+                        {doc.uploaded_at && <Text style={st.docDate}>{new Date(doc.uploaded_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</Text>}
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => Linking.openURL(`${BASE_URL}/${doc.file_path}`)}
+                      style={st.docAction}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="open-outline" size={14} color={colors.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleDeleteDoc(doc.id, doc.file_name)}
+                      style={st.docAction}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="trash-outline" size={14} color="#dc2626" />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 14 }}>
+              <Ionicons name="document-text-outline" size={24} color={colors.gray300} />
+              <Text style={{ fontSize: 11, color: colors.gray400, marginTop: 4 }}>No documents uploaded</Text>
+            </View>
+          )}
         </View>
 
         {/* Attendance */}
@@ -353,10 +612,33 @@ export default function EmployeeDetailScreen({ route, navigation }: { route: any
                 <PayrollCell label="Present" value={String(payroll.present_days)} highlight />
                 <PayrollCell label="Salary" value={`₹${Number(payroll.salary_amount || 0).toLocaleString('en-IN')}`} />
                 <PayrollCell label="Earned" value={`₹${Number(payroll.earned_amount || 0).toLocaleString('en-IN')}`} />
-                {payroll.deductions > 0 && (
-                  <PayrollCell label="Deduction" value={`-₹${Number(payroll.deductions).toLocaleString('en-IN')}`} negative />
-                )}
               </View>
+
+              {(parseFloat(payroll.bonus || 0) > 0 || parseFloat(payroll.incentives || 0) > 0) && (
+                <View style={st.payrollGrid}>
+                  {parseFloat(payroll.bonus || 0) > 0 && <PayrollCell label="Bonus" value={`+₹${Number(payroll.bonus).toLocaleString('en-IN')}`} highlight />}
+                  {parseFloat(payroll.incentives || 0) > 0 && <PayrollCell label="Incentives" value={`+₹${Number(payroll.incentives).toLocaleString('en-IN')}`} highlight />}
+                </View>
+              )}
+
+              {payroll.deductions > 0 && (
+                <View style={{ marginTop: 4 }}>
+                  <PayrollCell label="Deductions" value={`-₹${Number(payroll.deductions).toLocaleString('en-IN')}`} negative />
+                  {(() => {
+                    try {
+                      const rows = JSON.parse(payroll.deduction_details || '[]');
+                      if (Array.isArray(rows) && rows.length > 0) {
+                        return rows.map((d: any, i: number) => (
+                          <Text key={i} style={{ fontSize: 10, color: colors.gray500, marginLeft: 4, marginTop: 2 }}>
+                            {d.type || 'Other'}: ₹{Number(d.amount || 0).toLocaleString('en-IN')}
+                          </Text>
+                        ));
+                      }
+                    } catch {}
+                    return null;
+                  })()}
+                </View>
+              )}
 
               {payroll.status === 'Paid' ? (
                 <View style={st.paidNote}>
@@ -378,11 +660,70 @@ export default function EmployeeDetailScreen({ route, navigation }: { route: any
                   )}
                 </TouchableOpacity>
               )}
+
+              <TouchableOpacity
+                style={[st.payslipBtn, exportingPayslip && { opacity: 0.6 }]}
+                onPress={handleDownloadPayslip}
+                disabled={exportingPayslip}
+                activeOpacity={0.85}
+              >
+                {exportingPayslip ? <ActivityIndicator color={colors.primary} size="small" /> : (
+                  <>
+                    <Ionicons name="download-outline" size={14} color={colors.primary} />
+                    <Text style={st.payslipBtnText}>Download Payslip</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={st.payrollEmpty}>
               <Ionicons name="receipt-outline" size={28} color={colors.gray300} />
               <Text style={st.payrollEmptyText}>No payroll for this month</Text>
+
+              <View style={st.genForm}>
+                <View style={st.genRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.genLabel}>Working Days</Text>
+                    <TextInput style={st.genInput} value={workingDaysInput} onChangeText={setWorkingDaysInput} keyboardType="number-pad" placeholder="26" placeholderTextColor={colors.placeholder} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.genLabel}>Bonus (₹)</Text>
+                    <TextInput style={st.genInput} value={payBonus} onChangeText={setPayBonus} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={colors.placeholder} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.genLabel}>Incentives (₹)</Text>
+                    <TextInput style={st.genInput} value={payIncentives} onChangeText={setPayIncentives} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={colors.placeholder} />
+                  </View>
+                </View>
+
+                {/* Dynamic deductions */}
+                {payDeductions.length > 0 && (
+                  <View style={{ gap: 6, marginTop: 8 }}>
+                    {payDeductions.map((d, idx) => (
+                      <View key={idx} style={st.genRow}>
+                        <View style={{ flex: 2 }}>
+                          <TextInput style={st.genInput} value={d.type} onChangeText={v => { const rows = [...payDeductions]; rows[idx] = { ...rows[idx], type: v }; setPayDeductions(rows); }} placeholder="PF / ESI / Loan..." placeholderTextColor={colors.placeholder} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <TextInput style={st.genInput} value={d.amount} onChangeText={v => { const rows = [...payDeductions]; rows[idx] = { ...rows[idx], amount: v }; setPayDeductions(rows); }} keyboardType="decimal-pad" placeholder="₹" placeholderTextColor={colors.placeholder} />
+                        </View>
+                        <TouchableOpacity onPress={() => { const rows = [...payDeductions]; rows.splice(idx, 1); setPayDeductions(rows); }} style={{ paddingTop: 4 }}>
+                          <Ionicons name="close-circle" size={20} color="#dc2626" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                <TouchableOpacity
+                  style={st.addDedBtn}
+                  onPress={() => setPayDeductions([...payDeductions, { type: '', amount: '' }])}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="add-circle-outline" size={14} color={colors.primary} />
+                  <Text style={st.addDedText}>Add Deduction</Text>
+                </TouchableOpacity>
+              </View>
+
               <TouchableOpacity
                 style={[st.generateBtn, generatingPayroll && { opacity: 0.6 }]}
                 onPress={handleGeneratePayroll}
@@ -466,6 +807,7 @@ const st = StyleSheet.create({
   bigAvatar: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   bigAvatarText: { fontSize: 22, fontWeight: '800' },
   heroName: { color: '#fff', fontSize: 20, fontWeight: '900' },
+  heroDesig: { color: 'rgba(255,255,255,0.75)', fontSize: 12, fontWeight: '600', marginTop: 1 },
   heroMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' },
   heroStatusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
   dotSmall: { width: 6, height: 6, borderRadius: 3 },
@@ -577,7 +919,49 @@ const st = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
     backgroundColor: colors.primary,
     borderRadius: 12, paddingVertical: 11, paddingHorizontal: 18,
+    width: '100%',
   },
+  payslipBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    backgroundColor: colors.primary + '12',
+    borderRadius: 12, paddingVertical: 10, marginTop: 6,
+  },
+  payslipBtnText: { color: colors.primary, fontWeight: '800', fontSize: 12 },
+  genForm: { width: '100%', marginTop: 10 },
+  genRow: { flexDirection: 'row', gap: 8 },
+  genLabel: { fontSize: 9, fontWeight: '800', color: colors.gray500, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4 },
+  genInput: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 8, fontSize: 13,
+    color: colors.text, backgroundColor: '#fff', fontWeight: '700',
+  },
+  addDedBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginTop: 8, paddingVertical: 6,
+  },
+  addDedText: { fontSize: 11, fontWeight: '800', color: colors.primary },
+
+  // Documents
+  docUploadRow: { flexDirection: 'row', gap: 8 },
+  docUploadCard: {
+    flex: 1, alignItems: 'center', gap: 4,
+    borderWidth: 1, borderColor: '#e5e7eb', borderStyle: 'dashed',
+    borderRadius: 12, paddingVertical: 12, backgroundColor: '#fafafa',
+  },
+  docUploadIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  docUploadLabel: { fontSize: 11, fontWeight: '700', color: colors.text },
+  docUploadHint: { fontSize: 9, color: colors.gray400, fontWeight: '600' },
+  docItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#f9fafb', borderRadius: 12, padding: 10,
+    borderWidth: 1, borderColor: '#f3f4f6',
+  },
+  docThumb: { width: 42, height: 42, borderRadius: 8, overflow: 'hidden' },
+  docName: { fontSize: 12, fontWeight: '700', color: colors.text },
+  docTypeBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 },
+  docTypeText: { fontSize: 9, fontWeight: '800' },
+  docDate: { fontSize: 9, color: colors.gray400, fontWeight: '600' },
+  docAction: { padding: 6 },
 
   // Bottom bar
   bottomBar: {

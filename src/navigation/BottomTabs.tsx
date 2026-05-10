@@ -36,14 +36,18 @@ import PBFormScreen from '../screens/purchase-bills/PBFormScreen';
 import EmployeeListScreen from '../screens/employees/EmployeeListScreen';
 import EmployeeDetailScreen from '../screens/employees/EmployeeDetailScreen';
 import EmployeeFormScreen from '../screens/employees/EmployeeFormScreen';
+import AttendanceScreen from '../screens/employees/AttendanceScreen';
 import PaymentListScreen from '../screens/payments/PaymentListScreen';
 import PaymentDetailScreen from '../screens/payments/PaymentDetailScreen';
 import ReportsScreen from '../screens/reports/ReportsScreen';
 import ReportDetailScreen from '../screens/reports/ReportDetailScreen';
+import AllReportsScreen from '../screens/reports/AllReportsScreen';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 import TemplatesScreen from '../screens/settings/TemplatesScreen';
 import PayrollScreen from '../screens/payroll/PayrollScreen';
+import PayrollSettingsScreen from '../screens/payroll/PayrollSettingsScreen';
+import EmployeePayrollDetailScreen from '../screens/payroll/EmployeePayrollDetailScreen';
 import TaskListScreen from '../screens/tasks/TaskListScreen';
 import TaskDetailScreen from '../screens/tasks/TaskDetailScreen';
 import TaskFormScreen from '../screens/tasks/TaskFormScreen';
@@ -335,12 +339,15 @@ function EmployeeStack() {
     <Stack.Screen name="EmployeeList" component={EmployeeListScreen} options={{ title: 'Employees' }} />
     <Stack.Screen name="EmployeeDetail" component={EmployeeDetailScreen} options={{ title: 'Employee' }} />
     <Stack.Screen name="EmployeeForm" component={EmployeeFormScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Edit Employee' : 'New Employee' })} />
+    <Stack.Screen name="Attendance" component={AttendanceScreen} options={{ title: 'Attendance' }} />
   </Stack.Navigator>);
 }
 
 function PayrollStackNav() {
   return (<Stack.Navigator screenOptions={navHeader}>
     <Stack.Screen name="PayrollHome" component={PayrollScreen} options={{ title: 'Payroll' }} />
+    <Stack.Screen name="PayrollSettings" component={PayrollSettingsScreen} options={{ title: 'Payroll Settings' }} />
+    <Stack.Screen name="EmployeePayrollDetail" component={EmployeePayrollDetailScreen} options={({ route }: any) => ({ title: route.params?.employeeName || 'Employee Payroll' })} />
   </Stack.Navigator>);
 }
 
@@ -495,6 +502,7 @@ function ReportsStack() {
   return (<Stack.Navigator screenOptions={navHeader}>
     <Stack.Screen name="ReportsHome" component={ReportsScreen} options={{ title: 'Reports' }} />
     <Stack.Screen name="ReportDetail" component={ReportDetailScreen} options={{ title: 'Report' }} />
+    <Stack.Screen name="AllReports" component={AllReportsScreen} options={{ title: 'All Reports' }} />
   </Stack.Navigator>);
 }
 
@@ -653,6 +661,7 @@ const drawerGroups: DrawerGroup[] = [
     title: 'People',
     items: [
       { label: 'Employees', icon: 'person-outline', tab: 'Employees' },
+      { label: 'Attendance', icon: 'calendar-outline', tab: 'Employees', screen: 'Attendance' },
       { label: 'Payroll', icon: 'wallet-outline', tab: 'Payroll' },
       { label: 'Contractors', icon: 'briefcase-outline', tab: 'Contracts' },
     ],

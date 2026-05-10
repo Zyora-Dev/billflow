@@ -20,6 +20,7 @@ interface LineItem {
   discount_percent: number;
   tax_rate: number;
   amount: number;
+  serial_numbers: string;
 }
 
 export default function PBFormScreen({ route, navigation }: { route: any; navigation: any }) {
@@ -76,7 +77,7 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
             hsn_code: it.hsn_code || '',
             unit: it.unit || '', qty: it.qty, rate: it.rate,
             discount_percent: it.discount_percent || 0, tax_rate: it.tax_rate || 0,
-            amount: it.amount,
+            amount: it.amount, serial_numbers: it.serial_numbers || '',
           })));
         }
       } catch {}
@@ -90,11 +91,17 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
   };
 
   const addItem = (item: any) => {
+    const usePurchase = item.purchase_unit && item.conversion_factor && item.purchase_price != null;
     setLineItems(prev => [...prev, {
       item_id: item.id, item_name: item.item_name, description: item.description || '',
       hsn_code: item.hsn_code || '',
-      unit: item.unit || 'Nos', qty: 1, rate: item.sale_price || 0,
-      discount_percent: 0, tax_rate: item.tax_rate || 0, amount: 0,
+      unit: usePurchase ? item.purchase_unit : (item.unit || 'Nos'),
+      qty: 1,
+      rate: usePurchase ? item.purchase_price : (item.sale_price || 0),
+      discount_percent: 0, tax_rate: item.tax_rate || 0, amount: 0, serial_numbers: '',
+      _purchase_unit: item.purchase_unit || null,
+      _conversion_factor: item.conversion_factor || null,
+      _original_unit: item.unit || 'Nos',
     }]);
     setShowItemPicker(false);
   };
@@ -104,7 +111,7 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
       item_id: undefined, item_name: '', description: '',
       hsn_code: '',
       unit: 'Nos', qty: 1, rate: 0,
-      discount_percent: 0, tax_rate: 0, amount: 0,
+      discount_percent: 0, tax_rate: 0, amount: 0, serial_numbers: '',
     }]);
     setShowItemPicker(false);
   };
@@ -149,6 +156,7 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
           unit: li.unit, qty: li.qty, rate: li.rate,
           discount_percent: li.discount_percent, tax_rate: li.tax_rate,
           amount: calcLineAmount(li),
+          serial_numbers: li.serial_numbers || null,
         })),
       };
       if (editId) await api.put(`/api/purchase-bills/${editId}`, body);
@@ -222,18 +230,21 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
                   <Ionicons name="close-circle" size={22} color={colors.danger} />
                 </TouchableOpacity>
               </View>
+              {(li as any)._purchase_unit && (li as any)._conversion_factor ? (
+                <Text style={{ fontSize: 11, color: '#2563eb', marginBottom: 4 }}>1 {((li as any)._purchase_unit || '').toUpperCase()} = {(li as any)._conversion_factor} {((li as any)._original_unit || li.unit || '').toUpperCase()}</Text>
+              ) : null}
               {!li.item_id && (
                 <View style={styles.row}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.miniLabel}>Unit</Text>
                     <TextInput style={styles.miniInput} value={li.unit} onChangeText={v => updateLine(idx, 'unit', v)} placeholder="Nos" placeholderTextColor={colors.placeholder} />
                   </View>
-                  <View style={{ flex: 2, marginLeft: 8 }}>
-                    <Text style={styles.miniLabel}>Description</Text>
-                    <TextInput style={styles.miniInput} value={li.description} onChangeText={v => updateLine(idx, 'description', v)} placeholder="Optional" placeholderTextColor={colors.placeholder} />
-                  </View>
                 </View>
               )}
+              <View style={{ marginTop: 6 }}>
+                <Text style={styles.miniLabel}>Description</Text>
+                <TextInput style={[styles.miniInput, { minHeight: 48, textAlignVertical: 'top' }]} value={li.description} onChangeText={v => updateLine(idx, 'description', v)} placeholder="Item description" placeholderTextColor={colors.placeholder} multiline numberOfLines={2} />
+              </View>
               <View style={styles.row}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.miniLabel}>HSN Code</Text>
@@ -253,6 +264,10 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
                   <Text style={styles.miniLabel}>Tax %</Text>
                   <TextInput style={styles.miniInput} value={String(li.tax_rate)} onChangeText={v => updateLine(idx, 'tax_rate', parseFloat(v) || 0)} keyboardType="decimal-pad" />
                 </View>
+              </View>
+              <View style={{ marginTop: 6 }}>
+                <Text style={styles.miniLabel}>Serial Numbers</Text>
+                <TextInput style={[styles.miniInput, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, color: '#2563eb' }]} value={li.serial_numbers} onChangeText={v => updateLine(idx, 'serial_numbers', v)} placeholder="Serial nos (comma separated)" placeholderTextColor="#93c5fd" />
               </View>
               <Text style={styles.lineAmt}>Amount: ₹{calcLineAmount(li).toFixed(2)}</Text>
             </View>

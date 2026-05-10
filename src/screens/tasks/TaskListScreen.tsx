@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl,
-  ScrollView, Alert, TextInput, Share, ActivityIndicator,
+  ScrollView, Alert, TextInput, Share, ActivityIndicator, Modal, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import DateInput from '../../components/DateInput';
 import api from '../../api/client';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import EmptyState from '../../components/EmptyState';
@@ -67,17 +68,36 @@ function isWithin(taskDate: string | null | undefined, period: Period): boolean 
   return true;
 }
 
+const PAYMENT_METHODS = ['Cash', 'UPI', 'Bank Transfer', 'Cheque', 'Card', 'Other'];
+
 export default function TaskListScreen({ navigation }: { navigation: any }) {
   const [tasks, setTasks] = useState<any[]>([]);
   const [status, setStatus] = useState('All');
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState<'task' | 'order'>('task');
+  const [tab, setTab] = useState<'task' | 'order' | 'payments'>('task');
   const [period, setPeriod] = useState<Period>('all');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [orgId, setOrgId] = useState('');
   const [exporting, setExporting] = useState(false);
+
+  // Service payments state
+  const [servicePayments, setServicePayments] = useState<any[]>([]);
+  const [spLoading, setSpLoading] = useState(false);
+  const [spSearch, setSpSearch] = useState('');
+  const [spDateFrom, setSpDateFrom] = useState('');
+  const [spDateTo, setSpDateTo] = useState('');
+  const [spExporting, setSpExporting] = useState(false);
+
+  // Complete-with-payment dialog
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentTask, setPaymentTask] = useState<any>(null);
+  const [paymentForm, setPaymentForm] = useState({
+    amount: '', payment_method: 'Cash', payment_date: new Date().toISOString().split('T')[0],
+    reference_number: '', notes: '',
+  });
+  const [submittingPayment, setSubmittingPayment] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -99,6 +119,140 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
     const unsub = navigation.addListener('focus', fetchData);
     return unsub;
   }, [navigation, fetchData]);
+
+  // Service payments fetch
+  const fetchServicePayments = useCallback(async (oid?: string) => {
+    const o = oid || orgId;
+    if (!o) return;
+    setSpLoading(true);
+    try {
+      let url = `/api/service-payments?org_id=${o}`;
+      if (spDateFrom) url += `&date_from=${spDateFrom}`;
+      if (spDateTo) url += `&date_to=${spDateTo}`;
+      const r = await api.get(url);
+      setServicePayments(Array.isArray(r.data) ? r.data : []);
+    } catch {} finally { setSpLoading(false); }
+  }, [orgId, spDateFrom, spDateTo]);
+
+  useEffect(() => { if (tab === 'payments' && orgId) fetchServicePayments(); }, [tab, orgId, fetchServicePayments]);
+
+  // Complete with payment
+  const openPaymentDialog = (task: any) => {
+    setPaymentTask(task);
+    setPaymentForm({
+      amount: task.order_amount ? String(task.order_amount) : '',
+      payment_method: 'Cash',
+      payment_date: new Date().toISOString().split('T')[0],
+      reference_number: '', notes: '',
+    });
+    setPaymentDialogOpen(true);
+  };
+
+  const handleCompleteWithPayment = async () => {
+    if (!paymentTask) return;
+    setSubmittingPayment(true);
+    try {
+      const amt = parseFloat(paymentForm.amount);
+      if (amt > 0) {
+        await api.post('/api/service-payments', {
+          task_id: paymentTask.id, org_id: orgId, amount: amt,
+          payment_method: paymentForm.payment_method,
+          payment_date: paymentForm.payment_date,
+          reference_number: paymentForm.reference_number || null,
+          notes: paymentForm.notes || null,
+        });
+      }
+      await api.patch(`/api/tasks/${paymentTask.id}/status?status=Completed`);
+      setPaymentDialogOpen(false);
+      setPaymentTask(null);
+      fetchData();
+      if (tab === 'payments') fetchServicePayments();
+    } catch (e: any) {
+      Alert.alert('Error', e.response?.data?.detail || 'Failed');
+    } finally { setSubmittingPayment(false); }
+  };
+
+  const handleCompleteWithoutPayment = async () => {
+    if (!paymentTask) return;
+    setSubmittingPayment(true);
+    try {
+      await api.patch(`/api/tasks/${paymentTask.id}/status?status=Completed`);
+      setPaymentDialogOpen(false);
+      setPaymentTask(null);
+      fetchData();
+    } catch {} finally { setSubmittingPayment(false); }
+  };
+
+  const deleteServicePayment = (spId: number) => {
+    Alert.alert('Delete Payment', 'Remove this service payment?', [
+      { text: 'Cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try { await api.delete(`/api/service-payments/${spId}`); fetchServicePayments(); } catch {}
+      }},
+    ]);
+  };
+
+  // Service payments stats
+  const spStats = useMemo(() => {
+    const q = spSearch.toLowerCase();
+    const data = spSearch ? servicePayments.filter(p =>
+      p.task_title?.toLowerCase().includes(q) || p.customer_name?.toLowerCase().includes(q) ||
+      p.employee_name?.toLowerCase().includes(q) || p.reference_number?.toLowerCase().includes(q)
+    ) : servicePayments;
+    const total = data.reduce((s, p) => s + (p.amount || 0), 0);
+    const cash = data.filter(p => p.payment_method === 'Cash').reduce((s, p) => s + (p.amount || 0), 0);
+    const upi = data.filter(p => p.payment_method === 'UPI').reduce((s, p) => s + (p.amount || 0), 0);
+    const other = total - cash - upi;
+    return { data, total, cash, upi, other, count: data.length };
+  }, [servicePayments, spSearch]);
+
+  // Service payments PDF
+  const exportServicePaymentsPDF = async () => {
+    if (spStats.data.length === 0) { Alert.alert('Nothing to export'); return; }
+    setSpExporting(true);
+    try {
+      const rows = spStats.data.map((p: any, i: number) => `<tr>
+        <td>${i + 1}</td><td>${p.task_title || '—'}</td><td>${p.customer_name || '—'}</td>
+        <td>${p.employee_name || '—'}</td><td>${p.payment_method}</td>
+        <td>${p.payment_date || '—'}</td><td>${p.reference_number || '—'}</td>
+        <td class="r bold">₹${(p.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+      </tr>`).join('');
+      const dateRange = spDateFrom || spDateTo ? `${spDateFrom || 'Start'} to ${spDateTo || 'Today'}` : 'All Time';
+      const html = `<html><head><meta charset="utf-8"/><style>
+        body{font-family:-apple-system,sans-serif;padding:24px;color:#1f2937;font-size:11px}
+        h1{font-size:20px;color:#1a1a40;margin:0 0 4px}
+        .sub{font-size:10px;color:#6b7280;margin-bottom:14px}
+        .grid{display:flex;gap:8px;margin-bottom:14px}
+        .box{flex:1;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:10px}
+        .box .l{font-size:8px;text-transform:uppercase;letter-spacing:.4px;color:#9ca3af;font-weight:700}
+        .box .v{font-size:15px;font-weight:900;color:#1f2937;margin-top:2px}
+        table{width:100%;border-collapse:collapse;font-size:10px}
+        th{background:#065f46;color:#fff;padding:7px 6px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase}
+        td{padding:6px;border-bottom:1px solid #f3f4f6}
+        tr:nth-child(even){background:#fafbfc}
+        .r{text-align:right}.bold{font-weight:700}
+        .total td{border-top:2px solid #065f46;font-weight:800;background:#f0f1f5;padding:8px 6px}
+        .footer{margin-top:16px;text-align:center;font-size:9px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:8px}
+      </style></head><body>
+        <h1>Service Payments Report</h1>
+        <div class="sub">Period: ${dateRange} · Generated: ${new Date().toLocaleDateString('en-IN')}</div>
+        <div class="grid">
+          <div class="box"><div class="l">Total Collected</div><div class="v" style="color:#059669">₹${spStats.total.toLocaleString('en-IN')}</div></div>
+          <div class="box"><div class="l">Cash</div><div class="v">₹${spStats.cash.toLocaleString('en-IN')}</div></div>
+          <div class="box"><div class="l">UPI</div><div class="v">₹${spStats.upi.toLocaleString('en-IN')}</div></div>
+          <div class="box"><div class="l">Other</div><div class="v">₹${spStats.other.toLocaleString('en-IN')}</div></div>
+        </div>
+        <table><thead><tr><th>#</th><th>Task</th><th>Customer</th><th>Staff</th><th>Method</th><th>Date</th><th>Ref</th><th class="r">Amount</th></tr></thead>
+        <tbody>${rows}
+          <tr class="total"><td colspan="7" style="text-align:right">TOTAL (${spStats.count})</td>
+          <td class="r">₹${spStats.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td></tr>
+        </tbody></table>
+        <div class="footer">Generated via BillFlow</div>
+      </body></html>`;
+      const { uri } = await Print.printToFileAsync({ html });
+      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
+    } catch { Alert.alert('Error', 'Could not generate PDF'); } finally { setSpExporting(false); }
+  };
 
   const filtered = useMemo(() => {
     let data = tasks.filter(t => isWithin(t.task_date, period));
@@ -136,6 +290,10 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
       ...opts.map(s => ({
         text: s,
         onPress: async () => {
+          if (s === 'Completed') {
+            const t = tasks.find(t => t.id === id);
+            if (t) { openPaymentDialog(t); return; }
+          }
           try { await api.patch(`/api/tasks/${id}/status?status=${s}`); fetchData(); } catch {}
         },
       })),
@@ -284,6 +442,165 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
 
   return (
     <View style={s.container}>
+      {tab === 'payments' ? (
+        /* ═══ SERVICE PAYMENTS TAB ═══ */
+        <FlatList
+          data={spStats.data}
+          keyExtractor={(i, idx) => `sp-${i?.id ?? idx}`}
+          refreshControl={<RefreshControl refreshing={spLoading} onRefresh={() => fetchServicePayments()} />}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          ListHeaderComponent={
+            <View>
+              {/* Hero card */}
+              <View style={[s.hero, { backgroundColor: '#065f46' }]}>
+                <View style={[s.heroAccent, { backgroundColor: '#047857' }]} />
+                <View style={[s.heroAccent2, { backgroundColor: 'rgba(255,255,255,0.04)' }]} />
+                <View style={s.heroTopRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.heroEyebrow}>Service Collections</Text>
+                    <Text style={s.heroValue}>₹{spStats.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</Text>
+                    <Text style={s.heroSub}>{spStats.count} payments collected</Text>
+                  </View>
+                </View>
+                <View style={s.kpiRow}>
+                  <View style={s.kpi}>
+                    <Text style={s.kpiLabel}>Total</Text>
+                    <Text style={[s.kpiVal, { color: '#86efac' }]}>₹{spStats.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</Text>
+                  </View>
+                  <View style={s.kpi}>
+                    <Text style={s.kpiLabel}>Cash</Text>
+                    <Text style={[s.kpiVal, { color: '#fbbf24' }]}>₹{spStats.cash.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</Text>
+                  </View>
+                  <View style={s.kpi}>
+                    <Text style={s.kpiLabel}>UPI</Text>
+                    <Text style={[s.kpiVal, { color: '#93c5fd' }]}>₹{spStats.upi.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</Text>
+                  </View>
+                  <View style={[s.kpi, { borderRightWidth: 0 }]}>
+                    <Text style={s.kpiLabel}>Other</Text>
+                    <Text style={[s.kpiVal, { color: '#c4b5fd' }]}>₹{spStats.other.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Tab pills */}
+              <View style={s.tabRow}>
+                <TouchableOpacity style={[s.tabPill]} onPress={() => setTab('task')} activeOpacity={0.85}>
+                  <Ionicons name="checkbox-outline" size={14} color={colors.gray600} />
+                  <Text style={s.tabPillText}>Tasks</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.tabPill]} onPress={() => setTab('order')} activeOpacity={0.85}>
+                  <Ionicons name="cube-outline" size={14} color={colors.gray600} />
+                  <Text style={s.tabPillText}>Orders</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.tabPill, { backgroundColor: '#065f46', borderColor: '#065f46' }]} activeOpacity={0.85}>
+                  <Ionicons name="cash-outline" size={14} color="#fff" />
+                  <Text style={[s.tabPillText, s.tabPillTextActive]}>Payments</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Payment search & date filters */}
+              <View style={s.searchWrap}>
+                <View style={s.searchRow}>
+                  <Ionicons name="search" size={18} color="#065f46" />
+                  <TextInput
+                    style={s.searchInput}
+                    value={spSearch}
+                    onChangeText={setSpSearch}
+                    placeholder="Search payments..."
+                    placeholderTextColor={colors.gray400}
+                  />
+                  {spSearch ? (
+                    <TouchableOpacity onPress={() => setSpSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close-circle" size={18} color={colors.gray400} />
+                    </TouchableOpacity>
+                  ) : null}
+                  <View style={s.searchDivider} />
+                  <TouchableOpacity style={s.searchActionBtn} activeOpacity={0.8} onPress={exportServicePaymentsPDF} disabled={spExporting}>
+                    {spExporting ? <ActivityIndicator size="small" color="#065f46" /> : <Ionicons name="download-outline" size={17} color="#065f46" />}
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Date range filters */}
+              <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: spacing.md, marginBottom: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 10, color: colors.gray500, fontWeight: '600', marginBottom: 2 }}>From</Text>
+                  <DateInput value={spDateFrom} onChange={setSpDateFrom} placeholder="Start date" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 10, color: colors.gray500, fontWeight: '600', marginBottom: 2 }}>To</Text>
+                  <DateInput value={spDateTo} onChange={setSpDateTo} placeholder="End date" />
+                </View>
+                {(spDateFrom || spDateTo) ? (
+                  <TouchableOpacity style={{ justifyContent: 'flex-end', paddingBottom: 6 }} onPress={() => { setSpDateFrom(''); setSpDateTo(''); }}>
+                    <Ionicons name="close-circle" size={20} color={colors.gray400} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+          }
+          renderItem={({ item: p }) => (
+            <TouchableOpacity style={sp.card} activeOpacity={0.85}>
+              <View style={sp.cardTop}>
+                <View style={{ flex: 1 }}>
+                  <Text style={sp.cardTitle} numberOfLines={1}>{p.task_title || 'Task Payment'}</Text>
+                  {p.task_category ? (
+                    <View style={sp.catBadge}>
+                      <Text style={sp.catBadgeText}>{p.task_category}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={sp.amtBadge}>
+                  <Text style={sp.amtBadgeText}>₹{(p.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</Text>
+                </View>
+              </View>
+              <View style={sp.cardMeta}>
+                <View style={sp.metaRow}>
+                  <Ionicons name="card-outline" size={12} color={colors.gray500} />
+                  <View style={[sp.methodBadge, { backgroundColor: p.payment_method === 'Cash' ? '#fef3c7' : p.payment_method === 'UPI' ? '#dbeafe' : '#f3e8ff' }]}>
+                    <Text style={[sp.methodBadgeText, { color: p.payment_method === 'Cash' ? '#92400e' : p.payment_method === 'UPI' ? '#1e40af' : '#7e22ce' }]}>{p.payment_method}</Text>
+                  </View>
+                </View>
+                {p.payment_date ? (
+                  <View style={sp.metaRow}>
+                    <Ionicons name="calendar-outline" size={12} color={colors.gray500} />
+                    <Text style={sp.metaText}>{new Date(p.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <View style={sp.cardMeta}>
+                {p.employee_name ? (
+                  <View style={sp.metaRow}>
+                    <Ionicons name="person-outline" size={12} color={colors.gray500} />
+                    <Text style={sp.metaText}>{p.employee_name}</Text>
+                  </View>
+                ) : null}
+                {p.customer_name ? (
+                  <View style={sp.metaRow}>
+                    <Ionicons name="business-outline" size={12} color={colors.gray500} />
+                    <Text style={sp.metaText}>{p.customer_name}</Text>
+                  </View>
+                ) : null}
+              </View>
+              {p.reference_number ? (
+                <View style={[sp.metaRow, { marginTop: 2 }]}>
+                  <Ionicons name="document-text-outline" size={12} color={colors.gray500} />
+                  <Text style={sp.metaText}>Ref: {p.reference_number}</Text>
+                </View>
+              ) : null}
+              {p.notes ? <Text style={sp.cardNotes} numberOfLines={2}>{p.notes}</Text> : null}
+              <TouchableOpacity style={sp.deleteBtn} onPress={() => deleteServicePayment(p.id)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="trash-outline" size={14} color="#ef4444" />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          )}
+          ListEmptyComponent={spLoading ? <SkeletonList count={4} /> : (
+            <View style={{ paddingTop: 40 }}>
+              <EmptyState icon="cash-outline" title="No service payments" subtitle="Payments will appear when tasks are completed with collection" />
+            </View>
+          )}
+        />
+      ) : (
       <FlatList
         data={filtered}
         keyExtractor={(i, idx) => i?.id != null ? `task-${i.id}` : `task-${idx}`}
@@ -362,6 +679,14 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
               >
                 <Ionicons name="cube-outline" size={14} color={tab === 'order' ? '#fff' : colors.gray600} />
                 <Text style={[s.tabPillText, tab === 'order' && s.tabPillTextActive]}>Orders</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.tabPill, tab === ('payments' as string) && { backgroundColor: '#065f46', borderColor: '#065f46' }]}
+                onPress={() => setTab('payments')}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="cash-outline" size={14} color={tab === ('payments' as string) ? '#fff' : colors.gray600} />
+                <Text style={[s.tabPillText, tab === ('payments' as string) && s.tabPillTextActive]}>Payments</Text>
               </TouchableOpacity>
             </View>
 
@@ -463,14 +788,102 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
           </View>
         )}
       />
+      )}
 
       <TouchableOpacity
         style={s.fab}
-        onPress={() => navigation.navigate('TaskForm', { task_type: tab })}
+        onPress={() => navigation.navigate('TaskForm', { task_type: tab === 'payments' ? 'task' : tab })}
         activeOpacity={0.85}
       >
         <Ionicons name="add" size={26} color="#fff" />
       </TouchableOpacity>
+
+      {/* Complete with payment dialog */}
+      <Modal visible={paymentDialogOpen} transparent animationType="slide" onRequestClose={() => setPaymentDialogOpen(false)}>
+        <View style={sp.overlay}>
+          <View style={sp.sheet}>
+            <View style={sp.handle} />
+            <View style={sp.dialogHeader}>
+              <View style={sp.dialogIcon}>
+                <Ionicons name="checkmark-circle" size={24} color="#fff" />
+              </View>
+              <Text style={sp.dialogTitle}>Complete Task</Text>
+              <Text style={sp.dialogSub}>{paymentTask?.title}</Text>
+              {paymentTask?.customer_name ? <Text style={sp.dialogCustomer}>{paymentTask.customer_name}</Text> : null}
+            </View>
+
+            <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+              <Text style={sp.label}>Collection Amount</Text>
+              <View style={sp.amountBox}>
+                <Text style={sp.amountPrefix}>₹</Text>
+                <TextInput
+                  style={sp.amountInput}
+                  value={paymentForm.amount}
+                  onChangeText={v => setPaymentForm(f => ({ ...f, amount: v }))}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor="#d1d5db"
+                />
+              </View>
+
+              <Text style={sp.label}>Payment Method</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
+                {PAYMENT_METHODS.map(m => {
+                  const active = paymentForm.payment_method === m;
+                  return (
+                    <TouchableOpacity key={m}
+                      style={[sp.methodChip, active && { backgroundColor: '#065f46', borderColor: '#065f46' }]}
+                      onPress={() => setPaymentForm(f => ({ ...f, payment_method: m }))}
+                    >
+                      <Text style={[sp.methodChipText, active && { color: '#fff' }]}>{m}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <Text style={sp.label}>Payment Date</Text>
+              <DateInput value={paymentForm.payment_date} onChange={v => setPaymentForm(f => ({ ...f, payment_date: v }))} />
+
+              <Text style={sp.label}>Reference Number</Text>
+              <TextInput
+                style={sp.input}
+                value={paymentForm.reference_number}
+                onChangeText={v => setPaymentForm(f => ({ ...f, reference_number: v }))}
+                placeholder="UPI ref / cheque no."
+                placeholderTextColor="#d1d5db"
+              />
+
+              <Text style={sp.label}>Notes</Text>
+              <TextInput
+                style={[sp.input, { minHeight: 60, textAlignVertical: 'top' }]}
+                value={paymentForm.notes}
+                onChangeText={v => setPaymentForm(f => ({ ...f, notes: v }))}
+                placeholder="Optional notes..."
+                placeholderTextColor="#d1d5db"
+                multiline
+              />
+            </ScrollView>
+
+            <View style={sp.dialogActions}>
+              <TouchableOpacity style={sp.ghostBtn} onPress={handleCompleteWithoutPayment} disabled={submittingPayment}>
+                <Text style={sp.ghostBtnText}>Complete Without Payment</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[sp.greenBtn, submittingPayment && { opacity: 0.6 }]}
+                onPress={handleCompleteWithPayment}
+                disabled={submittingPayment}
+              >
+                {submittingPayment ? <ActivityIndicator size="small" color="#fff" /> : (
+                  <>
+                    <Ionicons name="checkmark" size={14} color="#fff" />
+                    <Text style={sp.greenBtnText}>Record & Complete</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -637,4 +1050,44 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     shadowColor: colors.primary, shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6,
   },
+});
+
+/* ═══ Service payment styles ═══ */
+const sp = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '85%' },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#e5e7eb', alignSelf: 'center', marginBottom: 12 },
+  dialogHeader: { alignItems: 'center', marginBottom: 16 },
+  dialogIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  dialogTitle: { fontSize: 18, fontWeight: '800', color: '#1f2937' },
+  dialogSub: { fontSize: 13, color: '#6b7280', marginTop: 2 },
+  dialogCustomer: { fontSize: 12, color: '#9ca3af', marginTop: 2 },
+  label: { fontSize: 12, fontWeight: '700', color: '#374151', marginTop: 12, marginBottom: 4 },
+  amountBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0fdf4', borderWidth: 2, borderColor: '#059669', borderRadius: 10, paddingHorizontal: 12 },
+  amountPrefix: { fontSize: 22, fontWeight: '900', color: '#059669' },
+  amountInput: { flex: 1, fontSize: 22, fontWeight: '800', color: '#065f46', paddingVertical: Platform.OS === 'ios' ? 12 : 8, marginLeft: 6 },
+  methodChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, backgroundColor: '#f9fafb', borderWidth: 1, borderColor: '#e5e7eb' },
+  methodChipText: { fontSize: 12, fontWeight: '600', color: '#6b7280' },
+  input: { backgroundColor: '#f9fafb', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 10 : 8, fontSize: 14, color: '#1f2937' },
+  dialogActions: { flexDirection: 'column', gap: 8, marginTop: 16 },
+  ghostBtn: { paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: '#e5e7eb', alignItems: 'center' },
+  ghostBtnText: { fontSize: 13, fontWeight: '600', color: '#6b7280' },
+  greenBtn: { flexDirection: 'row', gap: 6, paddingVertical: 13, borderRadius: 8, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center' },
+  greenBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+
+  // Payment cards
+  card: { backgroundColor: '#fff', marginHorizontal: spacing.md, marginBottom: 8, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#f3f4f6', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  cardTop: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 },
+  cardTitle: { fontSize: 14, fontWeight: '700', color: '#1f2937' },
+  catBadge: { marginTop: 3, backgroundColor: '#ede9fe', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, alignSelf: 'flex-start' },
+  catBadgeText: { fontSize: 9, fontWeight: '800', color: '#7c3aed', textTransform: 'uppercase', letterSpacing: 0.3 },
+  amtBadge: { backgroundColor: '#f0fdf4', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: '#bbf7d0' },
+  amtBadgeText: { fontSize: 14, fontWeight: '900', color: '#059669' },
+  cardMeta: { flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginBottom: 4 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  metaText: { fontSize: 11, color: '#6b7280' },
+  methodBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  methodBadgeText: { fontSize: 10, fontWeight: '700' },
+  cardNotes: { fontSize: 11, color: '#9ca3af', fontStyle: 'italic', marginTop: 4 },
+  deleteBtn: { position: 'absolute', top: 12, right: 12 },
 });

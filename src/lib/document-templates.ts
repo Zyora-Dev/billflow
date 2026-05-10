@@ -11,6 +11,7 @@ export interface DocItem {
   discount_percent?: number;
   tax_rate?: number;
   amount?: number;
+  serial_numbers?: string | null;
 }
 
 export interface DocBusiness {
@@ -170,7 +171,7 @@ function classicTemplate(opts: BuildHtmlOptions): string {
   const items = (doc.items || []).map((it, i) => `
     <tr>
       <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;color:#71717a">${i + 1}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;font-weight:500">${it.item_name || ''}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;font-weight:500">${it.item_name || ''}${it.serial_numbers ? `<div style="font-family:monospace;font-size:10px;color:#2563eb;margin-top:2px">S/N: ${it.serial_numbers}</div>` : ''}</td>
       <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;color:#71717a">${it.description || '—'}</td>
       <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;font-family:monospace;font-size:11px">${it.hsn_code || '—'}</td>
       <td style="padding:9px 12px;border-bottom:1px solid #e4e4e7;text-align:right">${it.qty} ${it.unit || ''}</td>
@@ -345,6 +346,7 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
   const { doc, business, customer, settings, baseUrl, assetDir, isQuotation } = opts;
   const { logoUrl, fontFamily, baseSize, title, docNumber, docDate, halfTax, discAmt } = resolveCommon(opts);
   const BLUE = '#2596d4';
+  const TEAL = '#1a9e8f';
   const greeting = customer?.contact_person || customer?.business_name || '';
   const docType = isQuotation ? 'quotation' : 'invoice';
   const numberLabel = isQuotation ? 'Quotation No.' : 'Invoice No.';
@@ -354,6 +356,7 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
       <td style="padding:10px 8px">${i + 1}</td>
       <td style="padding:10px 8px">
         <div style="font-weight:500">${it.item_name || ''}</div>
+        ${it.serial_numbers ? `<div style="font-size:11px;color:#52525b;font-family:monospace">S/N: ${it.serial_numbers}</div>` : ''}
         ${it.description ? `<div style="font-size:11px;color:#71717a">${it.description}</div>` : ''}
       </td>
       <td style="padding:10px 8px;text-align:right;color:#52525b">${it.qty || 0} ${it.unit || ''}</td>
@@ -464,11 +467,13 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
       <div class="bank-grid">
         <div>
           ${settings?.bank_name ? `
-            <div class="bank-label">Bank Details</div>
-            <div class="bank-line"><strong>Bank:</strong> ${settings.bank_name}</div>
-            ${settings.bank_account ? `<div class="bank-line"><strong>A/C:</strong> ${settings.bank_account}</div>` : ''}
-            ${settings.bank_ifsc ? `<div class="bank-line"><strong>IFSC:</strong> ${settings.bank_ifsc}</div>` : ''}
-            ${settings.bank_branch ? `<div class="bank-line"><strong>Branch:</strong> ${settings.bank_branch}</div>` : ''}` : ''}
+            <div style="font-size:11px;color:#3f3f46">And you can also pay through Cheque/Neft Name : ${business?.business_name || ''}</div>
+            <div style="font-size:11px;color:#3f3f46;margin-top:4px">
+              <div>Bank : ${settings.bank_name}</div>
+              ${settings.bank_branch ? `<div>Branch : ${settings.bank_branch}</div>` : ''}
+              ${settings.bank_account ? `<div>A/cNum  :${settings.bank_account}</div>` : ''}
+              ${settings.bank_ifsc ? `<div>Ifsc :${settings.bank_ifsc}</div>` : ''}
+            </div>` : ''}
         </div>
         ${settings?.qr_code_image ? `<img class="qr" src="${baseUrl}/assets/${assetDir}/${settings.qr_code_image}" alt=""/>` : '<div></div>'}
       </div>` : ''}
@@ -485,8 +490,8 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
     <div class="wave-wrap">
       <div class="wave-text">${settings?.footer_text || `This is a computer generated ${docType}`} &nbsp;·&nbsp; Page 1 of 1</div>
       <svg viewBox="0 0 600 60" preserveAspectRatio="none" style="width:100%;height:48px;display:block">
-        <path d="M0,40 Q150,0 300,30 T600,20 L600,60 L0,60 Z" fill="${BLUE}" opacity="0.85"/>
-        <path d="M0,50 Q150,20 300,40 T600,35 L600,60 L0,60 Z" fill="${BLUE}"/>
+        <path d="M0,40 Q150,0 300,30 T600,20 L600,60 L0,60 Z" fill="${TEAL}" opacity="0.85"/>
+        <path d="M0,50 Q150,20 300,40 T600,35 L600,60 L0,60 Z" fill="${TEAL}"/>
       </svg>
     </div>
   </div></body></html>`;
@@ -528,6 +533,7 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
       <td class="cell" style="text-align:center">${i + 1}</td>
       <td class="cell">
         <div style="font-weight:700">${it.item_name || ''}</div>
+        ${it.serial_numbers ? `<div style="color:#3f3f46;font-family:monospace;font-size:10px;line-height:1.3">S/N: ${it.serial_numbers}</div>` : ''}
         ${it.description ? `<div>${it.description}</div>` : ''}
       </td>
       <td class="cell" style="text-align:center">${it.hsn_code || ''}</td>
@@ -681,22 +687,17 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
         </td>
       </tr>
 
-      ${totalTax > 0 ? `
-      <tr>
-        <td class="cell" colspan="9">
-          <div class="row-label">Tax Amount (in words)</div>
-          <div style="font-weight:700">INR ${numberToWordsINR(totalTax).replace('Rupees ', '').replace(' Only', ' Only')}</div>
-        </td>
-      </tr>` : ''}
 
       <tr>
         <td class="cell" colspan="5" style="height:120px">
           ${settings?.bank_name ? `
             <div class="row-label">Company's Bank Details</div>
-            <div>A/c Holder's Name &nbsp;: <strong>${business?.business_name || ''}</strong></div>
-            <div>Bank Name &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <strong>${settings.bank_name}</strong></div>
-            ${settings.bank_account ? `<div>A/c No. &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <strong>${settings.bank_account}</strong></div>` : ''}
-            ${settings.bank_ifsc ? `<div>Branch &amp; IFS Code : <strong>${settings.bank_branch ? settings.bank_branch + ' & ' : ''}${settings.bank_ifsc}</strong></div>` : ''}` : ''}
+            <table style="font-size:11px;border-collapse:collapse">
+              <tr><td style="padding:1px 4px 1px 0;white-space:nowrap;vertical-align:top">A/c Holder's Name</td><td style="padding:1px 4px;vertical-align:top">:</td><td style="font-weight:600;vertical-align:top">${business?.business_name || ''}</td></tr>
+              <tr><td style="padding:1px 4px 1px 0;white-space:nowrap;vertical-align:top">Bank Name</td><td style="padding:1px 4px;vertical-align:top">:</td><td style="font-weight:600;vertical-align:top">${settings.bank_name}</td></tr>
+              ${settings.bank_account ? `<tr><td style="padding:1px 4px 1px 0;white-space:nowrap;vertical-align:top">A/c No.</td><td style="padding:1px 4px;vertical-align:top">:</td><td style="font-weight:600;vertical-align:top">${settings.bank_account}</td></tr>` : ''}
+              ${settings.bank_ifsc ? `<tr><td style="padding:1px 4px 1px 0;white-space:nowrap;vertical-align:top">Branch & IFS Code</td><td style="padding:1px 4px;vertical-align:top">:</td><td style="font-weight:600;vertical-align:top">${settings.bank_branch ? settings.bank_branch + ' & ' : ''}${settings.bank_ifsc}</td></tr>` : ''}
+            </table>` : ''}
         </td>
         <td class="cell sig-block" colspan="4" style="height:120px">
           <div style="text-align:right;font-weight:700">for ${business?.business_name || ''}</div>

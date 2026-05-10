@@ -45,6 +45,10 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
   const [statusFilter, setStatusFilter] = useState('All');
   const [exporting, setExporting] = useState(false);
 
+  // Employee adjustments for generate
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [adjustments, setAdjustments] = useState<Record<string, { bonus: string; incentives: string; deductions: { label: string; amount: string }[] }>>({});
+
   const fetchData = useCallback(async () => {
     try {
       const biz = await api.get('/api/business');
@@ -91,10 +95,65 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
     if (!workingDays || parseInt(workingDays) <= 0) return Alert.alert('Validation', 'Enter valid working days');
     setGenerating(true);
     try {
-      await api.post(`/api/payroll/generate?org_id=${orgId}&month=${month}&year=${year}&working_days=${parseInt(workingDays)}`);
+      // Build adjustments payload
+      const adj: Record<string, any> = {};
+      Object.entries(adjustments).forEach(([empId, data]) => {
+        const bonus = parseFloat(data.bonus) || 0;
+        const incentives = parseFloat(data.incentives) || 0;
+        const deds = data.deductions.filter(d => d.label.trim() && parseFloat(d.amount) > 0);
+        const other_deductions = deds.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+        if (bonus > 0 || incentives > 0 || other_deductions > 0) {
+          adj[empId] = {
+            bonus, incentives, other_deductions,
+            deduction_details: deds.map(d => ({ label: d.label, amount: parseFloat(d.amount) || 0 })),
+          };
+        }
+      });
+      await api.post(`/api/payroll/generate?org_id=${orgId}&month=${month}&year=${year}&working_days=${parseInt(workingDays)}`, { adjustments: Object.keys(adj).length > 0 ? adj : undefined });
       setShowGenerate(false);
+      setAdjustments({});
       fetchData();
     } catch (e: any) { Alert.alert('Error', e.response?.data?.detail || 'Failed to generate'); } finally { setGenerating(false); }
+  };
+
+  const openGenerateModal = async () => {
+    setShowGenerate(true);
+    try {
+      const res = await api.get(`/api/employees?org_id=${orgId}&status=Active`);
+      const emps = Array.isArray(res.data) ? res.data : [];
+      setEmployees(emps);
+      // Init adjustments for each employee
+      const init: Record<string, any> = {};
+      emps.forEach((e: any) => { init[String(e.id)] = { bonus: '', incentives: '', deductions: [] }; });
+      setAdjustments(init);
+    } catch {}
+  };
+
+  const updateAdj = (empId: string, field: string, value: string) => {
+    setAdjustments(prev => ({ ...prev, [empId]: { ...prev[empId], [field]: value } }));
+  };
+
+  const addDeduction = (empId: string) => {
+    setAdjustments(prev => ({
+      ...prev,
+      [empId]: { ...prev[empId], deductions: [...(prev[empId]?.deductions || []), { label: '', amount: '' }] },
+    }));
+  };
+
+  const updateDeduction = (empId: string, idx: number, field: string, value: string) => {
+    setAdjustments(prev => {
+      const deds = [...(prev[empId]?.deductions || [])];
+      deds[idx] = { ...deds[idx], [field]: value };
+      return { ...prev, [empId]: { ...prev[empId], deductions: deds } };
+    });
+  };
+
+  const removeDeduction = (empId: string, idx: number) => {
+    setAdjustments(prev => {
+      const deds = [...(prev[empId]?.deductions || [])];
+      deds.splice(idx, 1);
+      return { ...prev, [empId]: { ...prev[empId], deductions: deds } };
+    });
   };
 
   const markPaid = (id: number, name: string) => {
@@ -182,7 +241,11 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
     const isPaid = item.status === 'Paid';
     const presentRatio = item.working_days > 0 ? (item.present_days / item.working_days) : 0;
     return (
-      <View style={s.card}>
+      <TouchableOpacity
+        style={s.card}
+        onPress={() => navigation.navigate('EmployeePayrollDetail', { employeeId: item.employee_id, employeeName: item.employee_name })}
+        activeOpacity={0.85}
+      >
         <View style={[s.avatar, { backgroundColor: a.bg }]}>
           <Text style={[s.avatarText, { color: a.fg }]}>
             {((item.employee_name || '?')[0] || '?').toUpperCase()}
@@ -233,6 +296,13 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
             </Text>
           </View>
 
+          {(parseFloat(item.bonus || 0) > 0 || parseFloat(item.incentives || 0) > 0) && (
+            <View style={s.metaRow}>
+              {parseFloat(item.bonus || 0) > 0 && <Text style={[s.metaText, { color: '#3b82f6' }]}>Bonus +₹{Number(item.bonus).toLocaleString('en-IN')}</Text>}
+              {parseFloat(item.incentives || 0) > 0 && <Text style={[s.metaText, { color: '#3b82f6' }]}>Incentives +₹{Number(item.incentives).toLocaleString('en-IN')}</Text>}
+            </View>
+          )}
+
           {!isPaid && (
             <View style={s.actionRow}>
               <TouchableOpacity
@@ -253,7 +323,7 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
             </View>
           )}
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -292,14 +362,23 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
                     <Ionicons name="calendar-outline" size={11} color="#fff" />
                     <Text style={s.heroPillText}>{MONTHS_SHORT[month - 1]} {year}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={s.heroIcon}
-                    onPress={exportPDF}
-                    disabled={exporting}
-                    activeOpacity={0.85}
-                  >
-                    {exporting ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="download-outline" size={16} color="#fff" />}
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    <TouchableOpacity
+                      style={s.heroIcon}
+                      onPress={() => navigation.navigate('PayrollSettings')}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="settings-outline" size={16} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={s.heroIcon}
+                      onPress={exportPDF}
+                      disabled={exporting}
+                      activeOpacity={0.85}
+                    >
+                      {exporting ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="download-outline" size={16} color="#fff" />}
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
 
@@ -381,7 +460,7 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
 
       <TouchableOpacity
         style={s.fab}
-        onPress={() => setShowGenerate(true)}
+        onPress={openGenerateModal}
         activeOpacity={0.85}
       >
         <Ionicons name="calculator" size={22} color="#fff" />
@@ -390,38 +469,120 @@ export default function PayrollScreen({ navigation }: { navigation: any }) {
       {/* Generate sheet */}
       <Modal visible={showGenerate} transparent animationType="slide" onRequestClose={() => setShowGenerate(false)}>
         <View style={s.modalOverlay}>
-          <View style={s.modalSheet}>
+          <View style={[s.modalSheet, { maxHeight: '90%' }]}>
             <View style={s.modalHandle} />
             <Text style={s.modalTitle}>Generate Payroll</Text>
             <Text style={s.modalSub}>For {MONTHS_FULL[month - 1]} {year}</Text>
 
-            <Text style={s.modalLabel}>Working Days</Text>
-            <View style={s.workingDaysRow}>
-              {[22, 24, 26, 28, 30].map(d => {
-                const active = workingDays === String(d);
-                return (
-                  <TouchableOpacity
-                    key={d}
-                    style={[s.dayChip, active && s.dayChipActive]}
-                    onPress={() => setWorkingDays(String(d))}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={[s.dayChipText, active && s.dayChipTextActive]}>{d}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <TextInput
-              style={s.input}
-              value={workingDays}
-              onChangeText={setWorkingDays}
-              keyboardType="number-pad"
-              placeholder="Custom"
-              placeholderTextColor={colors.placeholder}
-            />
-            <Text style={s.helpText}>
-              Net pay is auto-calculated based on attendance. Salary advance expenses for this month are deducted automatically.
-            </Text>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 500 }}>
+              <Text style={s.modalLabel}>Working Days</Text>
+              <View style={s.workingDaysRow}>
+                {[22, 24, 26, 28, 30].map(d => {
+                  const active = workingDays === String(d);
+                  return (
+                    <TouchableOpacity
+                      key={d}
+                      style={[s.dayChip, active && s.dayChipActive]}
+                      onPress={() => setWorkingDays(String(d))}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={[s.dayChipText, active && s.dayChipTextActive]}>{d}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <TextInput
+                style={s.input}
+                value={workingDays}
+                onChangeText={setWorkingDays}
+                keyboardType="number-pad"
+                placeholder="Custom"
+                placeholderTextColor={colors.placeholder}
+              />
+
+              {/* Per-employee adjustments */}
+              {employees.length > 0 && (
+                <View style={{ marginTop: 16 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#1f2937', marginBottom: 8 }}>Employee Adjustments</Text>
+                  {employees.map((emp: any) => {
+                    const empId = String(emp.id);
+                    const adj = adjustments[empId] || { bonus: '', incentives: '', deductions: [] };
+                    const ac = avatarColor(emp.name);
+                    return (
+                      <View key={empId} style={{ backgroundColor: '#f9fafb', borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#f3f4f6' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                          <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: ac.bg, alignItems: 'center', justifyContent: 'center' }}>
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: ac.fg }}>{emp.name?.[0]?.toUpperCase()}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#1f2937' }}>{emp.name}</Text>
+                            <Text style={{ fontSize: 10, color: '#9ca3af' }}>₹{(emp.salary_amount || 0).toLocaleString('en-IN')} / {emp.salary_type}</Text>
+                          </View>
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '600', color: '#059669', marginBottom: 2 }}>Bonus</Text>
+                            <TextInput
+                              style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6, fontSize: 12, color: '#1f2937' }}
+                              value={adj.bonus}
+                              onChangeText={v => updateAdj(empId, 'bonus', v)}
+                              keyboardType="decimal-pad"
+                              placeholder="0"
+                              placeholderTextColor="#d1d5db"
+                            />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '600', color: '#2563eb', marginBottom: 2 }}>Incentives</Text>
+                            <TextInput
+                              style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6, fontSize: 12, color: '#1f2937' }}
+                              value={adj.incentives}
+                              onChangeText={v => updateAdj(empId, 'incentives', v)}
+                              keyboardType="decimal-pad"
+                              placeholder="0"
+                              placeholderTextColor="#d1d5db"
+                            />
+                          </View>
+                        </View>
+                        {/* Deductions */}
+                        {adj.deductions.map((d: any, di: number) => (
+                          <View key={di} style={{ flexDirection: 'row', gap: 6, marginTop: 6, alignItems: 'center' }}>
+                            <TextInput
+                              style={{ flex: 2, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6, fontSize: 12, color: '#1f2937' }}
+                              value={d.label}
+                              onChangeText={v => updateDeduction(empId, di, 'label', v)}
+                              placeholder="Deduction type"
+                              placeholderTextColor="#d1d5db"
+                            />
+                            <TextInput
+                              style={{ flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6, fontSize: 12, color: '#1f2937' }}
+                              value={d.amount}
+                              onChangeText={v => updateDeduction(empId, di, 'amount', v)}
+                              keyboardType="decimal-pad"
+                              placeholder="₹"
+                              placeholderTextColor="#d1d5db"
+                            />
+                            <TouchableOpacity onPress={() => removeDeduction(empId, di)}>
+                              <Ionicons name="close-circle" size={18} color="#ef4444" />
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                        <TouchableOpacity
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}
+                          onPress={() => addDeduction(empId)}
+                        >
+                          <Ionicons name="add-circle-outline" size={14} color="#ef4444" />
+                          <Text style={{ fontSize: 11, color: '#ef4444', fontWeight: '600' }}>Add Deduction</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
+              <Text style={s.helpText}>
+                Net pay is auto-calculated based on attendance. Salary advance expenses for this month are deducted automatically.
+              </Text>
+            </ScrollView>
 
             <View style={s.modalActions}>
               <TouchableOpacity style={s.btnGhost} onPress={() => setShowGenerate(false)}>

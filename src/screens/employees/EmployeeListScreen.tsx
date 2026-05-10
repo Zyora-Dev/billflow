@@ -65,7 +65,9 @@ export default function EmployeeListScreen({ navigation }: { navigation: any }) 
       data = data.filter(e =>
         e.name?.toLowerCase().includes(q) ||
         e.mobile?.includes(q) ||
-        e.email?.toLowerCase().includes(q),
+        e.email?.toLowerCase().includes(q) ||
+        e.designation?.toLowerCase().includes(q) ||
+        e.department?.toLowerCase().includes(q),
       );
     }
     return data;
@@ -91,11 +93,12 @@ export default function EmployeeListScreen({ navigation }: { navigation: any }) 
         <tr>
           <td>${i + 1}</td>
           <td>${e.name || ''}</td>
+          <td>${e.designation || '-'}</td>
+          <td>${e.department || '-'}</td>
+          <td>${e.emp_type || '-'}</td>
           <td>${e.mobile || '-'}</td>
-          <td>${e.email || '-'}</td>
           <td>${e.salary_type || '-'}</td>
           <td style="text-align:right">₹${(parseFloat(e.salary_amount) || 0).toLocaleString('en-IN')}</td>
-          <td>${e.joining_date || '-'}</td>
           <td>${e.status || '-'}</td>
         </tr>
       `).join('');
@@ -123,8 +126,8 @@ export default function EmployeeListScreen({ navigation }: { navigation: any }) 
           </div>
           <table>
             <thead><tr>
-              <th>#</th><th>Name</th><th>Mobile</th><th>Email</th>
-              <th>Type</th><th style="text-align:right">Salary</th><th>Joined</th><th>Status</th>
+              <th>#</th><th>Name</th><th>Designation</th><th>Department</th><th>Type</th>
+              <th>Mobile</th><th>Salary Type</th><th style="text-align:right">Salary</th><th>Status</th>
             </tr></thead>
             <tbody>${rows}</tbody>
           </table>
@@ -153,6 +156,25 @@ export default function EmployeeListScreen({ navigation }: { navigation: any }) 
         </View>
         <View style={{ flex: 1 }}>
           <Text style={s.name} numberOfLines={1}>{item.name}</Text>
+          {(item.designation || item.department) ? (
+            <View style={s.metaRow}>
+              {item.designation ? (
+                <View style={[s.tagChip, { backgroundColor: '#ede9fe' }]}>
+                  <Text style={[s.tagText, { color: '#6d28d9' }]}>{item.designation}</Text>
+                </View>
+              ) : null}
+              {item.department ? (
+                <View style={[s.tagChip, { backgroundColor: '#dbeafe' }]}>
+                  <Text style={[s.tagText, { color: '#1d4ed8' }]}>{item.department}</Text>
+                </View>
+              ) : null}
+              {item.emp_type ? (
+                <View style={[s.tagChip, { backgroundColor: item.emp_type === 'Full Time' ? '#dbeafe' : item.emp_type === 'Part Time' ? '#fef3c7' : item.emp_type === 'Contract' ? '#ede9fe' : item.emp_type === 'Freelancer' ? '#cffafe' : '#f3f4f6' }]}>
+                  <Text style={[s.tagText, { color: item.emp_type === 'Full Time' ? '#1d4ed8' : item.emp_type === 'Part Time' ? '#b45309' : item.emp_type === 'Contract' ? '#6d28d9' : item.emp_type === 'Freelancer' ? '#0e7490' : '#6b7280' }]}>{item.emp_type}</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
           <View style={s.metaRow}>
             {item.mobile ? (
               <View style={s.metaInline}>
@@ -230,6 +252,13 @@ export default function EmployeeListScreen({ navigation }: { navigation: any }) 
                     activeOpacity={0.85}
                   >
                     <Ionicons name="wallet-outline" size={16} color="#fff" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={s.heroIcon}
+                    onPress={() => navigation.navigate('Attendance')}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="calendar-outline" size={16} color="#fff" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -401,6 +430,8 @@ const s = StyleSheet.create({
   metaText: { fontSize: 11, color: colors.gray500, fontWeight: '600' },
   salaryChip: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999 },
   salaryChipText: { fontSize: 11, fontWeight: '800' },
+  tagChip: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999 },
+  tagText: { fontSize: 10, fontWeight: '800' },
 
   callBtn: {
     width: 36, height: 36, borderRadius: 18,

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert,
-  Image, TextInput, ActivityIndicator, Linking,
+  Image, TextInput, ActivityIndicator, Linking, Modal, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import DateInput from '../../components/DateInput';
 import api, { BASE_URL } from '../../api/client';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 
@@ -33,6 +34,8 @@ const CAT_META: Record<string, { color: string; bg: string; icon: any }> = {
   Others:      { color: '#6b7280', bg: '#f3f4f6', icon: 'ellipsis-horizontal' },
 };
 
+const PAYMENT_METHODS = ['Cash', 'UPI', 'Bank Transfer', 'Cheque', 'Card', 'Other'];
+
 export default function TaskDetailScreen({ route, navigation }: { route: any; navigation: any }) {
   const { id } = route.params;
   const [task, setTask] = useState<any>(null);
@@ -41,12 +44,26 @@ export default function TaskDetailScreen({ route, navigation }: { route: any; na
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
 
+  // Service payments
+  const [servicePayments, setServicePayments] = useState<any[]>([]);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({
+    amount: '', payment_method: 'Cash', payment_date: new Date().toISOString().split('T')[0],
+    reference_number: '', notes: '',
+  });
+  const [submittingPayment, setSubmittingPayment] = useState(false);
+
   const fetchData = async () => {
     try {
       const t = await api.get(`/api/tasks/${id}`);
       setTask(t.data);
       const u = await api.get(`/api/task-updates?task_id=${id}`);
       setUpdates(Array.isArray(u.data) ? u.data : []);
+      // Fetch service payments for this task
+      try {
+        const sp = await api.get(`/api/service-payments?task_id=${id}`);
+        setServicePayments(Array.isArray(sp.data) ? sp.data : []);
+      } catch {}
     } catch {}
   };
 
@@ -54,9 +71,58 @@ export default function TaskDetailScreen({ route, navigation }: { route: any; na
   useEffect(() => navigation.addListener('focus', fetchData), [navigation]);
 
   const changeStatus = (s: string) => {
+    if (s === 'Completed') {
+      setPaymentForm({
+        amount: task?.order_amount ? String(task.order_amount) : '',
+        payment_method: 'Cash',
+        payment_date: new Date().toISOString().split('T')[0],
+        reference_number: '', notes: '',
+      });
+      setPaymentDialogOpen(true);
+      return;
+    }
     Alert.alert('Change status', `Set status to ${s}?`, [
       { text: 'Cancel' },
       { text: 'Confirm', onPress: async () => { try { await api.patch(`/api/tasks/${id}/status?status=${s}`); fetchData(); } catch {} } },
+    ]);
+  };
+
+  const handleCompleteWithPayment = async () => {
+    setSubmittingPayment(true);
+    try {
+      const amt = parseFloat(paymentForm.amount);
+      if (amt > 0 && task) {
+        await api.post('/api/service-payments', {
+          task_id: id, org_id: task.org_id, amount: amt,
+          payment_method: paymentForm.payment_method,
+          payment_date: paymentForm.payment_date,
+          reference_number: paymentForm.reference_number || null,
+          notes: paymentForm.notes || null,
+        });
+      }
+      await api.patch(`/api/tasks/${id}/status?status=Completed`);
+      setPaymentDialogOpen(false);
+      fetchData();
+    } catch (e: any) {
+      Alert.alert('Error', e.response?.data?.detail || 'Failed');
+    } finally { setSubmittingPayment(false); }
+  };
+
+  const handleCompleteWithoutPayment = async () => {
+    setSubmittingPayment(true);
+    try {
+      await api.patch(`/api/tasks/${id}/status?status=Completed`);
+      setPaymentDialogOpen(false);
+      fetchData();
+    } catch {} finally { setSubmittingPayment(false); }
+  };
+
+  const deleteServicePayment = (spId: number) => {
+    Alert.alert('Delete Payment', 'Remove this service payment?', [
+      { text: 'Cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try { await api.delete(`/api/service-payments/${spId}`); fetchData(); } catch {}
+      }},
     ]);
   };
 
@@ -276,6 +342,56 @@ export default function TaskDetailScreen({ route, navigation }: { route: any; na
           </View>
         ) : null}
 
+        {/* Service Payments */}
+        {servicePayments.length > 0 ? (
+          <View style={st.section}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="cash" size={16} color="#059669" />
+                <Text style={st.secTitle}>Service Payments</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 11, color: '#6b7280' }}>{servicePayments.length} payment{servicePayments.length > 1 ? 's' : ''}</Text>
+                <View style={{ backgroundColor: '#f0fdf4', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#bbf7d0' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '900', color: '#059669' }}>₹{servicePayments.reduce((s: number, p: any) => s + (p.amount || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</Text>
+                </View>
+              </View>
+            </View>
+            {servicePayments.map((p: any) => (
+              <View key={p.id} style={{ backgroundColor: '#f0fdf4', borderRadius: 10, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: '#dcfce7' }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#059669' }}>₹{(p.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</Text>
+                  <View style={{ backgroundColor: p.payment_method === 'Cash' ? '#fef3c7' : p.payment_method === 'UPI' ? '#dbeafe' : '#f3e8ff', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: p.payment_method === 'Cash' ? '#92400e' : p.payment_method === 'UPI' ? '#1e40af' : '#7e22ce' }}>{p.payment_method}</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>
+                  {p.payment_date ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                      <Ionicons name="calendar-outline" size={11} color="#6b7280" />
+                      <Text style={{ fontSize: 11, color: '#6b7280' }}>{new Date(p.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</Text>
+                    </View>
+                  ) : null}
+                  {p.reference_number ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                      <Ionicons name="document-text-outline" size={11} color="#6b7280" />
+                      <Text style={{ fontSize: 11, color: '#6b7280' }}>Ref: {p.reference_number}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                {p.notes ? <Text style={{ fontSize: 11, color: '#9ca3af', fontStyle: 'italic', marginTop: 4 }}>{p.notes}</Text> : null}
+                <TouchableOpacity
+                  style={{ position: 'absolute', top: 10, right: 10 }}
+                  onPress={() => deleteServicePayment(p.id)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="trash-outline" size={13} color="#ef4444" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
         {/* Updates */}
         <View style={st.section}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -344,7 +460,7 @@ export default function TaskDetailScreen({ route, navigation }: { route: any; na
                   {u.update_text ? <Text style={st.updateText}>{u.update_text}</Text> : null}
                   {u.file_path ? (
                     <Image
-                      source={{ uri: `${BASE_URL}/${u.file_path}` }}
+                      source={{ uri: `${BASE_URL}/assets/tasks/${u.file_path}` }}
                       style={st.updateImg}
                       resizeMode="cover"
                     />
@@ -378,6 +494,97 @@ export default function TaskDetailScreen({ route, navigation }: { route: any; na
           <Ionicons name="trash-outline" size={16} color={colors.danger} />
         </TouchableOpacity>
       </View>
+
+      {/* Complete with payment dialog */}
+      <Modal visible={paymentDialogOpen} transparent animationType="slide" onRequestClose={() => setPaymentDialogOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '85%' }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#e5e7eb', alignSelf: 'center', marginBottom: 12 }} />
+            <View style={{ alignItems: 'center', marginBottom: 16 }}>
+              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                <Ionicons name="checkmark-circle" size={24} color="#fff" />
+              </View>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: '#1f2937' }}>Complete Task</Text>
+              <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>{task?.title}</Text>
+              {task?.customer_name ? <Text style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>{task.customer_name}</Text> : null}
+            </View>
+
+            <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#374151', marginTop: 4, marginBottom: 4 }}>Collection Amount</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0fdf4', borderWidth: 2, borderColor: '#059669', borderRadius: 10, paddingHorizontal: 12 }}>
+                <Text style={{ fontSize: 22, fontWeight: '900', color: '#059669' }}>₹</Text>
+                <TextInput
+                  style={{ flex: 1, fontSize: 22, fontWeight: '800', color: '#065f46', paddingVertical: Platform.OS === 'ios' ? 12 : 8, marginLeft: 6 }}
+                  value={paymentForm.amount}
+                  onChangeText={v => setPaymentForm(f => ({ ...f, amount: v }))}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor="#d1d5db"
+                />
+              </View>
+
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#374151', marginTop: 12, marginBottom: 4 }}>Payment Method</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
+                {PAYMENT_METHODS.map(m => {
+                  const active = paymentForm.payment_method === m;
+                  return (
+                    <TouchableOpacity key={m}
+                      style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, backgroundColor: active ? '#065f46' : '#f9fafb', borderWidth: 1, borderColor: active ? '#065f46' : '#e5e7eb' }}
+                      onPress={() => setPaymentForm(f => ({ ...f, payment_method: m }))}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#fff' : '#6b7280' }}>{m}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#374151', marginTop: 12, marginBottom: 4 }}>Payment Date</Text>
+              <DateInput value={paymentForm.payment_date} onChange={v => setPaymentForm(f => ({ ...f, payment_date: v }))} />
+
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#374151', marginTop: 12, marginBottom: 4 }}>Reference Number</Text>
+              <TextInput
+                style={{ backgroundColor: '#f9fafb', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 10 : 8, fontSize: 14, color: '#1f2937' }}
+                value={paymentForm.reference_number}
+                onChangeText={v => setPaymentForm(f => ({ ...f, reference_number: v }))}
+                placeholder="UPI ref / cheque no."
+                placeholderTextColor="#d1d5db"
+              />
+
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#374151', marginTop: 12, marginBottom: 4 }}>Notes</Text>
+              <TextInput
+                style={{ backgroundColor: '#f9fafb', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 10 : 8, fontSize: 14, color: '#1f2937', minHeight: 60, textAlignVertical: 'top' }}
+                value={paymentForm.notes}
+                onChangeText={v => setPaymentForm(f => ({ ...f, notes: v }))}
+                placeholder="Optional notes..."
+                placeholderTextColor="#d1d5db"
+                multiline
+              />
+            </ScrollView>
+
+            <View style={{ flexDirection: 'column', gap: 8, marginTop: 16 }}>
+              <TouchableOpacity
+                style={{ paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: '#e5e7eb', alignItems: 'center' }}
+                onPress={handleCompleteWithoutPayment}
+                disabled={submittingPayment}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#6b7280' }}>Complete Without Payment</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flexDirection: 'row', gap: 6, paddingVertical: 13, borderRadius: 8, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center', opacity: submittingPayment ? 0.6 : 1 }}
+                onPress={handleCompleteWithPayment}
+                disabled={submittingPayment}
+              >
+                {submittingPayment ? <ActivityIndicator size="small" color="#fff" /> : (
+                  <>
+                    <Ionicons name="checkmark" size={14} color="#fff" />
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>Record & Complete</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

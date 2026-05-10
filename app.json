@@ -38,6 +38,13 @@
           "color": "#10b981",
           "defaultChannel": "default"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SpectraBooks needs access to your photos to upload documents and task images.",
+          "cameraPermission": "SpectraBooks needs access to your camera to take photos for tasks, documents, and barcode scanning."
+        }
       ]
     ]
   }
