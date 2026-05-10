@@ -14,10 +14,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.spectra.billflow"
+      "bundleIdentifier": "com.spectrasaas.books"
     },
     "android": {
-      "package": "com.spectra.billflow",
+      "package": "com.spectrasaas.books",
       "versionCode": 10,
       "adaptiveIcon": {
         "foregroundImage": "./assets/spectra-adaptive.png",
