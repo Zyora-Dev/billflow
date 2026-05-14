@@ -19,6 +19,7 @@ const ACTIONS: ActionItem[] = [
   { key: 'invoice', label: 'New Invoice', icon: 'document-text', color: '#6366f1', route: 'Invoices', screen: 'InvoiceForm' },
   { key: 'quotation', label: 'New Quotation', icon: 'pricetag', color: '#0ea5e9', route: 'Quotations', screen: 'QuotationForm' },
   { key: 'view-quotation', label: 'View Quotations', icon: 'reader', color: '#7c3aed', route: 'Quotations', screen: 'QuotationList' },
+  { key: 'task', label: 'New Task', icon: 'checkbox', color: '#059669', route: 'Tasks', screen: 'TaskForm' },
   { key: 'payment', label: 'Record Payment', icon: 'cash', color: '#10b981', route: 'Payments', screen: 'PaymentList' },
   { key: 'expense', label: 'Add Expense', icon: 'receipt', color: '#f59e0b', route: 'Expenses' },
   { key: 'customer', label: 'Add Customer', icon: 'person-add', color: '#8b5cf6', route: 'Customers', screen: 'CustomerForm' },

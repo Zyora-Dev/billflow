@@ -533,7 +533,7 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
               {/* PAGE 2 — Payables */}
               <TouchableOpacity
                 activeOpacity={0.85}
-                onPress={() => navigateToTab('PurchasePayments')}
+                onPress={() => navigation.getParent()?.navigate('Purchase', { screen: 'Payables' })}
                 style={[styles.heroRecBlock, { width: heroSliderWidth }]}
               >
                 <View style={{ flex: 1 }}>

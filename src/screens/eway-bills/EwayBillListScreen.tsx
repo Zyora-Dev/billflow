@@ -179,7 +179,7 @@ export default function EwayBillListScreen({ navigation }: { navigation: any }) 
           <EmptyState
             icon="car-outline"
             title="No e-way bills"
-            description="Generate your first EWB JSON for the NIC portal"
+            subtitle="Generate your first EWB JSON for the NIC portal"
             actionLabel="New E-way Bill"
             onAction={() => navigation.navigate('EwayBillForm', {})}
           />

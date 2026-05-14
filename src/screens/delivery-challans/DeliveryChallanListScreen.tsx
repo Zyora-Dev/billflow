@@ -218,7 +218,7 @@ export default function DeliveryChallanListScreen({ navigation }: { navigation: 
         keyExtractor={item => String(item.id)}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={Header}
-        ListEmptyComponent={<EmptyState icon="cube-outline" title="No challans" message="Create your first delivery challan" />}
+        ListEmptyComponent={<EmptyState icon="cube-outline" title="No challans" subtitle="Create your first delivery challan" />}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />}
       />
 

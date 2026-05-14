@@ -4,8 +4,6 @@ import {
   TextInput, Share, Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
 import api from '../../api/client';
 import { colors, spacing } from '../../theme';
 import CurrencyText from '../../components/CurrencyText';
@@ -98,14 +96,7 @@ export default function EwayBillDetailScreen({ route, navigation }: { route: any
     try {
       const res = await api.get(`/api/eway-bills/${id}/json`);
       const json = JSON.stringify(res.data, null, 2);
-      const fileName = `${bill.eway_number || 'ewb'}.json`;
-      const path = `${FileSystem.cacheDirectory}${fileName}`;
-      await FileSystem.writeAsStringAsync(path, json, { encoding: FileSystem.EncodingType.UTF8 });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(path, { mimeType: 'application/json', dialogTitle: 'Share EWB JSON' });
-      } else {
-        await Share.share({ message: json });
-      }
+      await Share.share({ message: json, title: `${bill.eway_number || 'ewb'}.json` });
     } catch {
       Alert.alert('Error', 'Failed to download JSON');
     } finally { setBusy(false); }

@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
-  ScrollView, KeyboardAvoidingView, Platform, Modal, FlatList, ActivityIndicator,
+  ScrollView, KeyboardAvoidingView, Platform, Modal, FlatList, ActivityIndicator, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import api from '../../api/client';
 import { useToast } from '../../components/Toast';
+import { useAuth } from '../../auth/AuthContext';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import DateInput from '../../components/DateInput';
 
@@ -28,6 +30,7 @@ type CustomerMode = 'select' | 'manual';
 
 export default function TaskFormScreen({ route, navigation }: { route: any; navigation: any }) {
   const toast = useToast();
+  const { user } = useAuth();
   const editId = route.params?.id;
   const taskType = route.params?.task_type || 'task';
   const isOrder = taskType === 'order';
@@ -68,12 +71,31 @@ export default function TaskFormScreen({ route, navigation }: { route: any; navi
   const [empSearch, setEmpSearch] = useState('');
   const [custSearch, setCustSearch] = useState('');
   const [itemSearch, setItemSearch] = useState('');
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
+
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) setAttachedImage(result.assets[0].uri);
+  };
+
+  const takePhoto = async () => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) { Alert.alert('Permission', 'Camera access required'); return; }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+    if (!result.canceled && result.assets[0]) setAttachedImage(result.assets[0].uri);
+  };
 
   useEffect(() => {
     (async () => {
       try {
-        const biz = await api.get('/api/business');
-        const oid = biz.data[0]?.org_id;
+        let oid = user?.org_id || '';
+        if (!oid) {
+          const biz = await api.get('/api/business');
+          oid = biz.data[0]?.org_id || '';
+        }
         if (!oid) { setBootstrapping(false); return; }
         setOrgId(oid);
         const [e, c, it] = await Promise.all([
@@ -232,8 +254,30 @@ export default function TaskFormScreen({ route, navigation }: { route: any; navi
         payload.order_items = JSON.stringify(cleaned);
         payload.order_amount = orderTotal;
       }
-      if (editId) await api.put(`/api/tasks/${editId}`, payload);
-      else await api.post('/api/tasks', payload);
+      if (editId) {
+        await api.put(`/api/tasks/${editId}`, payload);
+        if (attachedImage) {
+          try {
+            const fd = new FormData();
+            fd.append('task_id', String(editId));
+            fd.append('update_text', 'Photo attached');
+            fd.append('file', { uri: attachedImage, name: 'photo.jpg', type: 'image/jpeg' } as any);
+            await api.post('/api/task-updates', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+          } catch {}
+        }
+      } else {
+        const res = await api.post('/api/tasks', payload);
+        const newTaskId = res.data?.id;
+        if (attachedImage && newTaskId) {
+          try {
+            const fd = new FormData();
+            fd.append('task_id', String(newTaskId));
+            fd.append('update_text', 'Photo attached');
+            fd.append('file', { uri: attachedImage, name: 'photo.jpg', type: 'image/jpeg' } as any);
+            await api.post('/api/task-updates', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+          } catch {}
+        }
+      }
       toast.success(editId ? 'Task updated' : 'Task created');
       navigation.goBack();
     } catch (e: any) {
@@ -526,6 +570,31 @@ export default function TaskFormScreen({ route, navigation }: { route: any; navi
             placeholderTextColor={colors.placeholder}
             multiline
           />
+        </Section>
+
+        {/* Photo Attachment */}
+        <Section title="Attach Photo" icon="camera-outline">
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity style={st.photoBtn} onPress={pickImage}>
+              <Ionicons name="images-outline" size={18} color={colors.primary} />
+              <Text style={st.photoBtnText}>Gallery</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={st.photoBtn} onPress={takePhoto}>
+              <Ionicons name="camera-outline" size={18} color={colors.primary} />
+              <Text style={st.photoBtnText}>Camera</Text>
+            </TouchableOpacity>
+          </View>
+          {attachedImage && (
+            <View style={{ marginTop: 10, position: 'relative' }}>
+              <Image source={{ uri: attachedImage }} style={{ width: '100%', height: 180, borderRadius: 10 }} resizeMode="cover" />
+              <TouchableOpacity
+                style={{ position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12, padding: 4 }}
+                onPress={() => setAttachedImage(null)}
+              >
+                <Ionicons name="close" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          )}
         </Section>
       </ScrollView>
 
@@ -846,6 +915,12 @@ const st = StyleSheet.create({
   },
   addLineText: { fontSize: 12, fontWeight: '700', color: colors.primary },
   emptyHint: { fontSize: 12, color: colors.gray500, textAlign: 'center', paddingVertical: 12, fontStyle: 'italic' },
+  photoBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.primary + '30',
+    backgroundColor: colors.primary + '08',
+  },
+  photoBtnText: { fontSize: 13, fontWeight: '600', color: colors.primary },
 
   // Bottom bar
   bottomBar: {

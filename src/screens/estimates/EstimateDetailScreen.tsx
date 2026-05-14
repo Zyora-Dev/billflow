@@ -163,9 +163,9 @@ export default function EstimateDetailScreen({ route, navigation }: { route: any
       doc: { ...est, invoice_number: est.estimate_number, invoice_date: est.estimate_date },
       business,
       customer,
-      settings: settings || {},
+      settings: { ...(settings || {}), quote_title: 'Estimate' },
       baseUrl: BASE_URL,
-      assetDir: 'estimate',
+      assetDir: 'quotation',
       isQuotation: true,
     });
   };
