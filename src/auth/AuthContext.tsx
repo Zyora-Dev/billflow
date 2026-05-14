@@ -18,6 +18,7 @@ interface User {
   org_id?: string;
   employee_id?: number;
   is_private?: boolean;
+  module_permissions?: string[];
 }
 
 interface AuthState {

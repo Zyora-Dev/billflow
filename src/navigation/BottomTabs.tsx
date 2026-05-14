@@ -547,14 +547,31 @@ const Tab = createBottomTabNavigator();
 
 function BottomTabs() {
   const insets = useSafeAreaInsets();
-  const { stealthActive } = useAuth();
+  const { stealthActive, user } = useAuth();
+  const isAdmin = !user?.role || user.role === 'admin';
+  const perms = user?.module_permissions || [];
 
-  // Visible tabs change based on stealth mode
-  // Normal: Dashboard, Invoices, Expenses, Purchase
-  // Private: Dashboard, Invoices, Purchase, Customers, Vendors
-  const visibleSet = stealthActive
-    ? new Set(['Dashboard', 'Invoices', 'Purchase', 'Customers', 'Vendors'])
-    : new Set(['Dashboard', 'Invoices', 'Expenses', 'Purchase']);
+  // Visible tabs change based on stealth mode and role
+  // Staff: only show tabs they have permission for
+  let visibleSet: Set<string>;
+  if (!isAdmin) {
+    // Staff — map permissions to tab names
+    const staffTabs = new Set<string>();
+    if (perms.includes('tasks') || perms.includes('orders')) staffTabs.add('Tasks');
+    if (perms.includes('invoices')) staffTabs.add('Invoices');
+    if (perms.includes('expenses')) staffTabs.add('Expenses');
+    if (perms.includes('customers')) staffTabs.add('Customers');
+    if (perms.includes('purchase_bills')) staffTabs.add('Purchase');
+    if (perms.includes('vendors')) staffTabs.add('Vendors');
+    if (perms.includes('dashboard')) staffTabs.add('Dashboard');
+    // Always show at least Dashboard if nothing else
+    if (staffTabs.size === 0) staffTabs.add('Dashboard');
+    visibleSet = staffTabs;
+  } else if (stealthActive) {
+    visibleSet = new Set(['Dashboard', 'Invoices', 'Purchase', 'Customers', 'Vendors']);
+  } else {
+    visibleSet = new Set(['Dashboard', 'Invoices', 'Expenses', 'Purchase']);
+  }
 
   const hidden = (name: string) => visibleSet.has(name) ? undefined : { tabBarItemStyle: { display: 'none' as const } };
 
@@ -637,72 +654,72 @@ function BottomTabs() {
 }
 
 // Drawer menu items
-interface DrawerItem { label: string; icon: keyof typeof Ionicons.glyphMap; tab: string; screen?: string; hideWhenPrivate?: boolean; }
+interface DrawerItem { label: string; icon: keyof typeof Ionicons.glyphMap; tab: string; screen?: string; hideWhenPrivate?: boolean; moduleKey?: string; }
 interface DrawerGroup { title: string; items: DrawerItem[]; hideWhenPrivate?: boolean; }
 
 const drawerGroups: DrawerGroup[] = [
   {
     title: 'Overview',
     items: [
-      { label: 'Dashboard', icon: 'grid-outline', tab: 'Dashboard' },
+      { label: 'Dashboard', icon: 'grid-outline', tab: 'Dashboard', moduleKey: 'dashboard' },
       { label: 'Notifications', icon: 'notifications-outline', tab: 'Notifications' },
     ],
   },
   {
     title: 'Sales',
     items: [
-      { label: 'Invoices', icon: 'document-text-outline', tab: 'Invoices' },
-      { label: 'Quotations', icon: 'document-outline', tab: 'Quotations' },
-      { label: 'Estimates', icon: 'calculator-outline', tab: 'Estimates' },
-      { label: 'Recurring Invoices', icon: 'repeat-outline', tab: 'RecurringInvoices' },
-      { label: 'Delivery Challans', icon: 'send-outline', tab: 'DeliveryChallans' },
-      { label: 'Credit Notes', icon: 'remove-circle-outline', tab: 'CreditNotes' },
-      { label: 'Payments', icon: 'cash-outline', tab: 'Payments' },
-      { label: 'Receipts', icon: 'reader-outline', tab: 'Receipts' },
-      { label: 'Customers', icon: 'people-outline', tab: 'Customers' },
+      { label: 'Invoices', icon: 'document-text-outline', tab: 'Invoices', moduleKey: 'invoices' },
+      { label: 'Quotations', icon: 'document-outline', tab: 'Quotations', moduleKey: 'quotations' },
+      { label: 'Estimates', icon: 'calculator-outline', tab: 'Estimates', moduleKey: 'estimates' },
+      { label: 'Recurring Invoices', icon: 'repeat-outline', tab: 'RecurringInvoices', moduleKey: 'recurring_invoices' },
+      { label: 'Delivery Challans', icon: 'send-outline', tab: 'DeliveryChallans', moduleKey: 'delivery_challans' },
+      { label: 'Credit Notes', icon: 'remove-circle-outline', tab: 'CreditNotes', moduleKey: 'credit_notes' },
+      { label: 'Payments', icon: 'cash-outline', tab: 'Payments', moduleKey: 'payments' },
+      { label: 'Receipts', icon: 'reader-outline', tab: 'Receipts', moduleKey: 'receipts' },
+      { label: 'Customers', icon: 'people-outline', tab: 'Customers', moduleKey: 'customers' },
     ],
   },
   {
     title: 'Purchases',
     items: [
-      { label: 'Purchase Bills', icon: 'newspaper-outline', tab: 'PurchaseBills' },
-      { label: 'Purchase Orders', icon: 'cart-outline', tab: 'PurchaseOrders' },
-      { label: 'Debit Notes', icon: 'add-circle-outline', tab: 'DebitNotes' },
-      { label: 'Purchase Payments', icon: 'card-outline', tab: 'PurchasePayments' },
-      { label: 'Payment Vouchers', icon: 'document-attach-outline', tab: 'PaymentVouchers' },
-      { label: 'Vendors', icon: 'storefront-outline', tab: 'Vendors' },
+      { label: 'Purchase Bills', icon: 'newspaper-outline', tab: 'PurchaseBills', moduleKey: 'purchase_bills' },
+      { label: 'Purchase Orders', icon: 'cart-outline', tab: 'PurchaseOrders', moduleKey: 'purchase_orders' },
+      { label: 'Debit Notes', icon: 'add-circle-outline', tab: 'DebitNotes', moduleKey: 'debit_notes' },
+      { label: 'Purchase Payments', icon: 'card-outline', tab: 'PurchasePayments', moduleKey: 'purchase_payments' },
+      { label: 'Payment Vouchers', icon: 'document-attach-outline', tab: 'PaymentVouchers', moduleKey: 'payment_vouchers' },
+      { label: 'Vendors', icon: 'storefront-outline', tab: 'Vendors', moduleKey: 'vendors' },
     ],
   },
   {
     title: 'Inventory',
     items: [
-      { label: 'Items', icon: 'cube-outline', tab: 'Items' },
-      { label: 'Stock', icon: 'layers-outline', tab: 'Inventory' },
+      { label: 'Items', icon: 'cube-outline', tab: 'Items', moduleKey: 'items' },
+      { label: 'Stock', icon: 'layers-outline', tab: 'Inventory', moduleKey: 'inventory' },
     ],
   },
   {
     title: 'People',
     items: [
-      { label: 'Employees', icon: 'person-outline', tab: 'Employees' },
-      { label: 'Attendance', icon: 'calendar-outline', tab: 'Employees', screen: 'Attendance' },
-      { label: 'Payroll', icon: 'wallet-outline', tab: 'Payroll' },
-      { label: 'Contractors', icon: 'briefcase-outline', tab: 'Contracts' },
+      { label: 'Employees', icon: 'person-outline', tab: 'Employees', moduleKey: 'employees' },
+      { label: 'Attendance', icon: 'calendar-outline', tab: 'Employees', screen: 'Attendance', moduleKey: 'attendance' },
+      { label: 'Payroll', icon: 'wallet-outline', tab: 'Payroll', moduleKey: 'employees' },
+      { label: 'Contractors', icon: 'briefcase-outline', tab: 'Contracts', moduleKey: 'contracts' },
     ],
   },
   {
     title: 'Services',
     items: [
-      { label: 'Tasks & Orders', icon: 'checkbox-outline', tab: 'Tasks' },
-      { label: 'Expenses', icon: 'receipt-outline', tab: 'Expenses' },
+      { label: 'Tasks & Orders', icon: 'checkbox-outline', tab: 'Tasks', moduleKey: 'tasks' },
+      { label: 'Expenses', icon: 'receipt-outline', tab: 'Expenses', moduleKey: 'expenses' },
     ],
   },
   {
     title: 'Reports & Compliance',
     items: [
-      { label: 'Reports', icon: 'bar-chart-outline', tab: 'Reports' },
-      { label: 'Ledger', icon: 'book-outline', tab: 'Ledger' },
-      { label: 'GST Returns', icon: 'calculator-outline', tab: 'GST', hideWhenPrivate: true },
-      { label: 'E-Way Bills', icon: 'car-outline', tab: 'EwayBills', hideWhenPrivate: true },
+      { label: 'Reports', icon: 'bar-chart-outline', tab: 'Reports', moduleKey: 'reports' },
+      { label: 'Ledger', icon: 'book-outline', tab: 'Ledger', moduleKey: 'ledger' },
+      { label: 'GST Returns', icon: 'calculator-outline', tab: 'GST', hideWhenPrivate: true, moduleKey: 'gst' },
+      { label: 'E-Way Bills', icon: 'car-outline', tab: 'EwayBills', hideWhenPrivate: true, moduleKey: 'gst' },
     ],
   },
   {
@@ -721,6 +738,14 @@ function DrawerNavigator({ visible, onClose }: { visible: boolean; onClose: () =
   const navigation = useNavigation<any>();
   const { user, logout, stealthActive } = useAuth();
   const isPrivate = stealthActive || !!user?.is_private;
+  const isAdmin = !user?.role || user.role === 'admin';
+  const perms = user?.module_permissions || [];
+
+  const isAllowed = (moduleKey?: string) => {
+    if (isAdmin) return true;
+    if (!moduleKey) return isAdmin; // no moduleKey = admin-only (Business, Settings, etc.)
+    return perms.includes(moduleKey);
+  };
 
   const navigateTab = (tab: string, screen?: string) => {
     onClose();
@@ -735,7 +760,7 @@ function DrawerNavigator({ visible, onClose }: { visible: boolean; onClose: () =
     .filter(g => !(isPrivate && g.hideWhenPrivate))
     .map(g => ({
       ...g,
-      items: g.items.filter(i => !(isPrivate && i.hideWhenPrivate)),
+      items: g.items.filter(i => !(isPrivate && i.hideWhenPrivate) && isAllowed(i.moduleKey)),
     }))
     .filter(g => g.items.length > 0);
 

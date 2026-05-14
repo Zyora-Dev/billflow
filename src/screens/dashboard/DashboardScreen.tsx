@@ -137,8 +137,13 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
   const fetchData = useCallback(async () => {
     try {
       const bizRes = await api.get('/api/business');
-      setBusinesses(bizRes.data);
-      const oid = bizRes.data[0]?.org_id;
+      let bizList = bizRes.data;
+      // Staff users don't own businesses — use their org_id
+      if (!bizList.length && user?.org_id) {
+        bizList = [{ org_id: user.org_id, business_name: 'My Business' }];
+      }
+      setBusinesses(bizList);
+      const oid = bizList[0]?.org_id || user?.org_id;
       if (oid) {
         const [sumRes, purchRes, expRes, todayExpRes, invRes, custRes, vendRes, itemRes, taskRes, gstRes, quoteRes] =
           await Promise.all([
