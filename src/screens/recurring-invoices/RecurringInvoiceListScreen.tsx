@@ -393,7 +393,7 @@ export default function RecurringInvoiceListScreen({ navigation }: { navigation:
     const isGenerating = generating === t.id;
 
     return (
-      <View style={styles.card}>
+      <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('RecurringInvoiceDetail', { id: t.id })} activeOpacity={0.7}>
         <View style={styles.cardHeader}>
           <View style={{ flex: 1 }}>
             <Text style={styles.cardCustomer} numberOfLines={1}>{t.customer_name || 'Unknown Customer'}</Text>
@@ -455,7 +455,7 @@ export default function RecurringInvoiceListScreen({ navigation }: { navigation:
 
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: colors.info + '12' }]}
-            onPress={() => openForm(t)}
+            onPress={() => navigation.navigate('RecurringInvoiceForm', { id: t.id })}
           >
             <Ionicons name="pencil" size={14} color={colors.info} />
           </TouchableOpacity>
@@ -467,7 +467,7 @@ export default function RecurringInvoiceListScreen({ navigation }: { navigation:
             <Ionicons name="trash" size={14} color={colors.danger} />
           </TouchableOpacity>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -770,7 +770,7 @@ export default function RecurringInvoiceListScreen({ navigation }: { navigation:
             title="No Recurring Invoices"
             subtitle={statusFilter !== 'All' || searchDebounced ? 'Try adjusting your filters' : 'Create a template to auto-generate invoices'}
             actionLabel="Create Template"
-            onAction={() => openForm()}
+            onAction={() => navigation.navigate('RecurringInvoiceForm')}
           />
         }
         contentContainerStyle={{ paddingBottom: 100 }}
@@ -778,7 +778,7 @@ export default function RecurringInvoiceListScreen({ navigation }: { navigation:
       />
 
       {/* FAB */}
-      <TouchableOpacity style={styles.fab} onPress={() => openForm()} activeOpacity={0.85}>
+      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('RecurringInvoiceForm')} activeOpacity={0.85}>
         <Ionicons name="add" size={28} color={colors.white} />
       </TouchableOpacity>
 

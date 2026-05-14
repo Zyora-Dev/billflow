@@ -318,6 +318,13 @@ export default function InvoiceListScreen({ navigation }: { navigation: any }) {
                 <Ionicons name="download-outline" size={15} color="#ffffff" />
               )}
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconPill}
+              activeOpacity={0.7}
+              onPress={() => navigation.getParent()?.navigate('Settings', { screen: 'InvoiceSettings' })}
+            >
+              <Ionicons name="settings-outline" size={15} color="#ffffff" />
+            </TouchableOpacity>
           </View>
         </View>
         <View style={styles.heroStatsRow}>

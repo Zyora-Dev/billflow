@@ -39,6 +39,7 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
   const [discountType, setDiscountType] = useState<'flat' | 'percentage'>('flat');
   const [discountValue, setDiscountValue] = useState('0');
   const [freightCharges, setFreightCharges] = useState('0');
+  const [freightGst, setFreightGst] = useState(false);
   const [roundOffEnabled, setRoundOffEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showVendorPicker, setShowVendorPicker] = useState(false);
@@ -134,7 +135,8 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
   }, 0);
   const discAmt = discountType === 'percentage' ? subtotalRaw * parseFloat(discountValue || '0') / 100 : parseFloat(discountValue || '0');
   const freight = parseFloat(freightCharges || '0') || 0;
-  const rawTotal = subtotalRaw - discAmt + taxAmount + freight;
+  const freightTax = freightGst ? freight * 0.18 : 0;
+  const rawTotal = subtotalRaw - discAmt + taxAmount + freight + freightTax;
   const total = roundOffEnabled ? Math.round(rawTotal) : rawTotal;
   const roundOffDelta = roundOffEnabled ? total - rawTotal : 0;
   const subtotal = subtotalRaw;
@@ -285,15 +287,34 @@ export default function PBFormScreen({ route, navigation }: { route: any; naviga
           )}
           <View style={styles.sumRow}><Text style={styles.sumLabel}>Tax</Text><Text style={styles.sumVal}>₹{taxAmount.toFixed(2)}</Text></View>
 
-          <Text style={[styles.label, { marginTop: spacing.sm }]}>Freight Charges</Text>
-          <TextInput
-            style={styles.input}
-            value={freightCharges}
-            onChangeText={setFreightCharges}
-            placeholder="0"
-            placeholderTextColor={colors.placeholder}
-            keyboardType="decimal-pad"
-          />
+          {/* Freight charges */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}>
+            <Text style={[styles.sumLabel, { flex: 1 }]}>Freight Charges</Text>
+            <TextInput
+              style={{ width: 90, borderWidth: 1, borderColor: colors.border, borderRadius: borderRadius.sm, paddingHorizontal: 10, paddingVertical: 6, fontSize: fontSize.sm, color: colors.text, textAlign: 'right' }}
+              value={freightCharges}
+              onChangeText={setFreightCharges}
+              keyboardType="decimal-pad"
+              placeholder="0"
+              placeholderTextColor={colors.placeholder}
+            />
+            <Text style={[styles.sumVal, { width: 80, textAlign: 'right' }]}>+₹{freight.toFixed(2)}</Text>
+          </View>
+
+          {/* Freight GST toggle */}
+          {freight > 0 && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, gap: 8 }}>
+              <TouchableOpacity
+                style={{ width: 44, height: 26, borderRadius: 13, backgroundColor: freightGst ? '#10b981' : colors.gray200, padding: 3, justifyContent: 'center' }}
+                onPress={() => setFreightGst(v => !v)}
+                activeOpacity={0.8}
+              >
+                <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignSelf: freightGst ? 'flex-end' : 'flex-start' }} />
+              </TouchableOpacity>
+              <Text style={{ fontSize: fontSize.sm, color: colors.text, fontWeight: '500' }}>GST on Freight (18%)</Text>
+              {freightGst && <Text style={{ marginLeft: 'auto', fontSize: fontSize.sm, fontWeight: '600', color: colors.text }}>+₹{freightTax.toFixed(2)}</Text>}
+            </View>
+          )}
 
           <TouchableOpacity
             style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.md, gap: 8 }}

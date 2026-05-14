@@ -45,6 +45,9 @@ import AllReportsScreen from '../screens/reports/AllReportsScreen';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 import TemplatesScreen from '../screens/settings/TemplatesScreen';
+import PurchaseBillSettingsScreen from '../screens/settings/PurchaseBillSettingsScreen';
+import QuotationSettingsScreen from '../screens/settings/QuotationSettingsScreen';
+import InvoiceSettingsScreen from '../screens/settings/InvoiceSettingsScreen';
 import PayrollScreen from '../screens/payroll/PayrollScreen';
 import PayrollSettingsScreen from '../screens/payroll/PayrollSettingsScreen';
 import EmployeePayrollDetailScreen from '../screens/payroll/EmployeePayrollDetailScreen';
@@ -70,6 +73,8 @@ import DebitNoteListScreen from '../screens/debit-notes/DebitNoteListScreen';
 import DebitNoteDetailScreen from '../screens/debit-notes/DebitNoteDetailScreen';
 import DebitNoteFormScreen from '../screens/debit-notes/DebitNoteFormScreen';
 import RecurringInvoiceListScreen from '../screens/recurring-invoices/RecurringInvoiceListScreen';
+import RecurringInvoiceDetailScreen from '../screens/recurring-invoices/RecurringInvoiceDetailScreen';
+import RecurringInvoiceFormScreen from '../screens/recurring-invoices/RecurringInvoiceFormScreen';
 import DeliveryChallanListScreen from '../screens/delivery-challans/DeliveryChallanListScreen';
 import DeliveryChallanDetailScreen from '../screens/delivery-challans/DeliveryChallanDetailScreen';
 import DeliveryChallanFormScreen from '../screens/delivery-challans/DeliveryChallanFormScreen';
@@ -84,6 +89,9 @@ import PaymentVoucherListScreen from '../screens/payment-vouchers/PaymentVoucher
 import PaymentVoucherDetailScreen from '../screens/payment-vouchers/PaymentVoucherDetailScreen';
 import PaymentReminderScreen from '../screens/payment-reminders/PaymentReminderScreen';
 import CustomFieldScreen from '../screens/custom-fields/CustomFieldScreen';
+import EstimateListScreen from '../screens/estimates/EstimateListScreen';
+import EstimateDetailScreen from '../screens/estimates/EstimateDetailScreen';
+import EstimateFormScreen from '../screens/estimates/EstimateFormScreen';
 import CustomTabBar from './CustomTabBar';
 import { QuickAddProvider } from '../components/QuickAddFAB';
 import { GlobalSearchProvider, useGlobalSearch } from '../components/GlobalSearch';
@@ -308,6 +316,14 @@ function QuotationStack() {
   </Stack.Navigator>);
 }
 
+function EstimateStack() {
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="EstimateList" component={EstimateListScreen} options={{ title: 'Estimates' }} />
+    <Stack.Screen name="EstimateDetail" component={EstimateDetailScreen} options={{ title: 'Estimate' }} />
+    <Stack.Screen name="EstimateForm" component={EstimateFormScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Edit Estimate' : 'New Estimate' })} />
+  </Stack.Navigator>);
+}
+
 function VendorStack() {
   return (<Stack.Navigator screenOptions={navHeader}>
     <Stack.Screen name="VendorList" component={VendorListScreen} options={{ title: 'Vendors' }} />
@@ -441,6 +457,8 @@ function DebitNoteStack() {
 function RecurringInvoiceStack() {
   return (<Stack.Navigator screenOptions={navHeader}>
     <Stack.Screen name="RecurringInvoiceList" component={RecurringInvoiceListScreen} options={{ title: 'Recurring Invoices' }} />
+    <Stack.Screen name="RecurringInvoiceDetail" component={RecurringInvoiceDetailScreen} options={{ title: 'Recurring Invoice' }} />
+    <Stack.Screen name="RecurringInvoiceForm" component={RecurringInvoiceFormScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Edit Template' : 'New Template' })} />
   </Stack.Navigator>);
 }
 
@@ -510,6 +528,9 @@ function SettingsStack() {
   return (<Stack.Navigator screenOptions={navHeader}>
     <Stack.Screen name="SettingsHome" component={SettingsScreen} options={{ title: 'Settings' }} />
     <Stack.Screen name="Templates" component={TemplatesScreen} options={{ title: 'Document Templates' }} />
+    <Stack.Screen name="PurchaseBillSettings" component={PurchaseBillSettingsScreen} options={{ title: 'Purchase Bill Settings' }} />
+    <Stack.Screen name="QuotationSettings" component={QuotationSettingsScreen} options={{ title: 'Quotation Settings' }} />
+    <Stack.Screen name="InvoiceSettings" component={InvoiceSettingsScreen} options={{ title: 'Invoice Settings' }} />
     <Stack.Screen name="Subscription" component={SubscriptionScreen} options={{ title: 'Subscription' }} />
     <Stack.Screen name="HelpSupport" component={HelpSupportScreen} options={{ title: 'Help & Support' }} />
   </Stack.Navigator>);
@@ -582,6 +603,7 @@ function BottomTabs() {
       {/* Hidden tabs — accessible from drawer only */}
       <Tab.Screen name="Items" component={ItemStackNav} options={{ tabBarItemStyle: { display: 'none' } }} />
       <Tab.Screen name="Quotations" component={QuotationStack} options={{ tabBarItemStyle: { display: 'none' } }} />
+      <Tab.Screen name="Estimates" component={EstimateStack} options={{ tabBarItemStyle: { display: 'none' } }} />
       <Tab.Screen name="Vendors" component={VendorStack} options={hidden('Vendors')} />
       <Tab.Screen name="PurchaseOrders" component={POStack} options={{ tabBarItemStyle: { display: 'none' } }} />
       <Tab.Screen name="PurchaseBills" component={PBStack} options={{ tabBarItemStyle: { display: 'none' } }} />
@@ -631,6 +653,7 @@ const drawerGroups: DrawerGroup[] = [
     items: [
       { label: 'Invoices', icon: 'document-text-outline', tab: 'Invoices' },
       { label: 'Quotations', icon: 'document-outline', tab: 'Quotations' },
+      { label: 'Estimates', icon: 'calculator-outline', tab: 'Estimates' },
       { label: 'Recurring Invoices', icon: 'repeat-outline', tab: 'RecurringInvoices' },
       { label: 'Delivery Challans', icon: 'send-outline', tab: 'DeliveryChallans' },
       { label: 'Credit Notes', icon: 'remove-circle-outline', tab: 'CreditNotes' },

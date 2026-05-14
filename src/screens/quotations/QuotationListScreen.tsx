@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl,
-  ScrollView, TextInput, ActivityIndicator, Alert,
+  ScrollView, TextInput, ActivityIndicator, Alert, Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
@@ -13,6 +13,7 @@ import { SkeletonList } from '../../components/Skeleton';
 import { usePreview } from '../../components/Preview';
 import StatusBadge from '../../components/StatusBadge';
 import CurrencyText from '../../components/CurrencyText';
+import DateInput from '../../components/DateInput';
 
 const STATUSES = ['All', 'Draft', 'Sent', 'Accepted', 'Rejected', 'Expired'];
 
@@ -24,22 +25,37 @@ const STATUS_COLOR: Record<string, string> = {
   Expired: '#f59e0b',
 };
 
-type Period = 'all' | 'month' | 'year';
-const PERIODS: { value: Period; label: string }[] = [
-  { value: 'all',   label: 'All time' },
-  { value: 'month', label: 'This month' },
-  { value: 'year',  label: 'This year' },
-];
+type Period =
+  | { type: 'month'; month: number; year: number }
+  | { type: 'year'; year: number }
+  | { type: 'custom'; from: string; to: string };
 
-function isWithin(date: string | undefined, period: Period): boolean {
-  if (!date) return period === 'all';
-  if (period === 'all') return true;
+const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function periodRange(p: Period) {
+  if (p.type === 'month') {
+    const from = `${p.year}-${String(p.month).padStart(2,'0')}-01`;
+    const last = new Date(p.year, p.month, 0).getDate();
+    const to = `${p.year}-${String(p.month).padStart(2,'0')}-${String(last).padStart(2,'0')}`;
+    return { from, to };
+  }
+  if (p.type === 'year') return { from: `${p.year}-01-01`, to: `${p.year}-12-31` };
+  return { from: p.from, to: p.to };
+}
+
+function periodLabel(p: Period) {
+  if (p.type === 'month') return `${MONTH_LABELS[p.month - 1]} ${p.year}`;
+  if (p.type === 'year') return `Year ${p.year}`;
+  if (!p.from || !p.to) return 'Custom range';
+  return `${p.from} → ${p.to}`;
+}
+
+function isWithin(date: string | undefined, p: Period): boolean {
+  if (!date) return false;
   const d = new Date(date);
   if (isNaN(d.getTime())) return false;
-  const now = new Date();
-  if (period === 'month') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  if (period === 'year') return d.getFullYear() === now.getFullYear();
-  return true;
+  const range = periodRange(p);
+  return date >= range.from && date <= range.to;
 }
 
 function fmtDateShort(s?: string) {
@@ -54,10 +70,13 @@ function fmtDateShort(s?: string) {
 
 export default function QuotationListScreen({ navigation }: { navigation: any }) {
   const preview = usePreview();
+  const today = new Date();
+  const [period, setPeriod] = useState<Period>({ type: 'month', month: today.getMonth() + 1, year: today.getFullYear() });
+  const [draft, setDraft] = useState<Period>(period);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [quotes, setQuotes] = useState<any[]>([]);
   const [status, setStatus] = useState('All');
   const [search, setSearch] = useState('');
-  const [period, setPeriod] = useState<Period>('all');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -129,7 +148,7 @@ export default function QuotationListScreen({ navigation }: { navigation: any })
           .badge { background: #f3f4f6; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; }
         </style></head><body>
           <h1>Quotations Report</h1>
-          <div class="sub">Period: ${PERIODS.find(p => p.value === period)?.label} • Generated ${new Date().toLocaleString()}</div>
+          <div class="sub">Period: ${periodLabel(period)} • Generated ${new Date().toLocaleString()}</div>
           <table>
             <thead><tr><th>#</th><th>Quote #</th><th>Customer</th><th>Date</th><th>Status</th><th style="text-align:right">Amount</th></tr></thead>
             <tbody>${rows}</tbody>
@@ -201,18 +220,24 @@ export default function QuotationListScreen({ navigation }: { navigation: any })
                     Worth <CurrencyText amount={stats.value} style={styles.heroSubBold} />
                   </Text>
                 </View>
-                <TouchableOpacity
-                  style={styles.heroPill}
-                  activeOpacity={0.85}
-                  onPress={() => {
-                    const idx = PERIODS.findIndex(p => p.value === period);
-                    setPeriod(PERIODS[(idx + 1) % PERIODS.length].value);
-                  }}
-                >
-                  <Ionicons name="calendar-outline" size={13} color="#fff" />
-                  <Text style={styles.heroPillText}>{PERIODS.find(p => p.value === period)?.label}</Text>
-                  <Ionicons name="chevron-down" size={13} color="#fff" />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TouchableOpacity
+                    style={styles.heroPill}
+                    activeOpacity={0.85}
+                    onPress={() => { setDraft(period); setPickerOpen(true); }}
+                  >
+                    <Ionicons name="calendar-outline" size={13} color="#fff" />
+                    <Text style={styles.heroPillText}>{periodLabel(period)}</Text>
+                    <Ionicons name="chevron-down" size={13} color="#fff" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => navigation.getParent()?.navigate('Settings', { screen: 'QuotationSettings' })}
+                    style={{ backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: 8 }}
+                  >
+                    <Ionicons name="settings-outline" size={16} color="#fff" />
+                  </TouchableOpacity>
+                </View>
               </View>
               <View style={styles.kpiRow}>
                 <View style={styles.kpi}>
@@ -292,6 +317,105 @@ export default function QuotationListScreen({ navigation }: { navigation: any })
       <TouchableOpacity style={styles.fab} activeOpacity={0.85} onPress={() => navigation.navigate('QuotationForm', {})}>
         <Ionicons name="add" size={28} color={colors.white} />
       </TouchableOpacity>
+
+      {/* Date Picker Modal */}
+      <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+        <TouchableOpacity style={styles.modalBg} activeOpacity={1} onPress={() => setPickerOpen(false)}>
+          <TouchableOpacity activeOpacity={1} style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Filter Period</Text>
+
+            <View style={styles.tabRow}>
+              {(['month', 'year', 'custom'] as const).map(t => {
+                const active = draft.type === t;
+                return (
+                  <TouchableOpacity
+                    key={t}
+                    style={[styles.tab, active && styles.tabActive]}
+                    onPress={() => {
+                      const tNow = new Date();
+                      if (t === 'month') setDraft({ type: 'month', month: tNow.getMonth() + 1, year: tNow.getFullYear() });
+                      else if (t === 'year') setDraft({ type: 'year', year: tNow.getFullYear() });
+                      else setDraft({ type: 'custom', from: '', to: '' });
+                    }}
+                  >
+                    <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                      {t === 'month' ? 'Month' : t === 'year' ? 'Year' : 'Custom'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {draft.type === 'month' && (
+              <>
+                <View style={styles.yearStepRow}>
+                  <TouchableOpacity onPress={() => setDraft(d => d.type === 'month' ? { ...d, year: d.year - 1 } : d)} style={styles.stepBtn}>
+                    <Ionicons name="chevron-back" size={18} color={colors.primary} />
+                  </TouchableOpacity>
+                  <Text style={styles.yearText}>{(draft as any).year}</Text>
+                  <TouchableOpacity onPress={() => setDraft(d => d.type === 'month' ? { ...d, year: d.year + 1 } : d)} style={styles.stepBtn}>
+                    <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.monthGrid}>
+                  {MONTH_LABELS.map((m, i) => {
+                    const active = (draft as any).month === i + 1;
+                    return (
+                      <TouchableOpacity
+                        key={m}
+                        style={[styles.monthChip, active && styles.monthChipActive]}
+                        onPress={() => setDraft(d => d.type === 'month' ? { ...d, month: i + 1 } : d)}
+                      >
+                        <Text style={[styles.monthChipText, active && styles.monthChipTextActive]}>{m}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            {draft.type === 'year' && (
+              <View style={styles.yearStepRow}>
+                <TouchableOpacity onPress={() => setDraft(d => d.type === 'year' ? { ...d, year: d.year - 1 } : d)} style={styles.stepBtn}>
+                  <Ionicons name="chevron-back" size={18} color={colors.primary} />
+                </TouchableOpacity>
+                <Text style={styles.yearText}>{(draft as any).year}</Text>
+                <TouchableOpacity onPress={() => setDraft(d => d.type === 'year' ? { ...d, year: d.year + 1 } : d)} style={styles.stepBtn}>
+                  <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {draft.type === 'custom' && (
+              <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+                <DateInput
+                  label="From"
+                  value={draft.type === 'custom' ? draft.from : ''}
+                  onChange={(v) => setDraft(d => d.type === 'custom' ? { ...d, from: v } : d)}
+                />
+                <DateInput
+                  label="To"
+                  value={draft.type === 'custom' ? draft.to : ''}
+                  onChange={(v) => setDraft(d => d.type === 'custom' ? { ...d, to: v } : d)}
+                />
+              </View>
+            )}
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.btnGhost} onPress={() => {
+                const tNow = new Date();
+                setDraft({ type: 'month', month: tNow.getMonth() + 1, year: tNow.getFullYear() });
+              }}>
+                <Text style={styles.btnGhostText}>Reset</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.btnPrimary} onPress={() => { setPeriod(draft); setPickerOpen(false); }}>
+                <Text style={styles.btnPrimaryText}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -397,4 +521,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
     shadowColor: colors.primary, shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6,
   },
+
+  // Modal
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalSheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: spacing.lg, paddingBottom: 40 },
+  modalHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.gray200, alignSelf: 'center', marginBottom: spacing.md },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: spacing.md },
+  tabRow: { flexDirection: 'row', gap: 8, marginBottom: spacing.md },
+  tab: { flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: '#f3f4f6', alignItems: 'center' },
+  tabActive: { backgroundColor: colors.primary },
+  tabText: { fontSize: 13, fontWeight: '700', color: colors.gray500 },
+  tabTextActive: { color: '#fff' },
+  yearStepRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.lg, marginVertical: spacing.sm },
+  stepBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary + '10', alignItems: 'center', justifyContent: 'center' },
+  yearText: { fontSize: 18, fontWeight: '800', color: colors.text },
+  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: spacing.sm },
+  monthChip: { width: '22%' as any, paddingVertical: 10, borderRadius: 10, backgroundColor: '#f3f4f6', alignItems: 'center' },
+  monthChipActive: { backgroundColor: colors.primary },
+  monthChipText: { fontSize: 13, fontWeight: '700', color: colors.gray500 },
+  monthChipTextActive: { color: '#fff' },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: spacing.lg },
+  btnGhost: { flex: 1, paddingVertical: 14, borderRadius: 14, borderWidth: 1.5, borderColor: colors.gray200, alignItems: 'center' },
+  btnGhostText: { fontSize: 15, fontWeight: '700', color: colors.gray500 },
+  btnPrimary: { flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center' },
+  btnPrimaryText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

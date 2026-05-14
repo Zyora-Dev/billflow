@@ -99,13 +99,23 @@ export default function ReportsScreen({ navigation }: { navigation: any }) {
   const [payablesData, setPayablesData] = useState<any[]>([]);
   const [expenseData, setExpenseData] = useState<any>(null);
   const [serviceData, setServiceData] = useState<any>(null);
+  const [servicePayments, setServicePayments] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [serviceEmpFilter, setServiceEmpFilter] = useState<number | null>(null);
   const [payrollData, setPayrollData] = useState<any[]>([]);
 
   useEffect(() => {
     (async () => {
       try {
         const r = await api.get('/api/business');
-        setOrgId(r.data[0]?.org_id || '');
+        const oid = r.data[0]?.org_id || '';
+        setOrgId(oid);
+        if (oid) {
+          try {
+            const empR = await api.get('/api/employees?org_id=' + oid);
+            setEmployees(Array.isArray(empR.data) ? empR.data : []);
+          } catch {}
+        }
       } catch {}
     })();
   }, []);
@@ -158,9 +168,17 @@ export default function ReportsScreen({ navigation }: { navigation: any }) {
         }
         case 'service-payments': {
           try {
-            const r = await api.get('/api/service-payments/summary?org_id=' + orgId + dp);
-            setServiceData(r.data);
-          } catch { setServiceData({ total: 0, count: 0, by_employee: [], by_method: {} }); }
+            const empQ = serviceEmpFilter ? '&employee_id=' + serviceEmpFilter : '';
+            const [sumR, listR] = await Promise.all([
+              api.get('/api/service-payments/summary?org_id=' + orgId + dp + empQ),
+              api.get('/api/service-payments?org_id=' + orgId + dp + empQ),
+            ]);
+            setServiceData(sumR.data);
+            setServicePayments(Array.isArray(listR.data) ? listR.data : []);
+          } catch {
+            setServiceData({ total: 0, count: 0, by_employee: [], by_method: {} });
+            setServicePayments([]);
+          }
           break;
         }
         case 'payroll': {
@@ -170,7 +188,7 @@ export default function ReportsScreen({ navigation }: { navigation: any }) {
         }
       }
     } catch {} finally { setLoading(false); }
-  }, [orgId, dateParams, payrollMonth, payrollYear]);
+  }, [orgId, dateParams, payrollMonth, payrollYear, serviceEmpFilter]);
 
   useEffect(() => { if (orgId) fetchTab(tab); }, [orgId, tab, fetchTab]);
 
@@ -807,46 +825,95 @@ export default function ReportsScreen({ navigation }: { navigation: any }) {
   function renderServicePayments() {
     if (!serviceData) return <Empty />;
     const d = serviceData;
-    const employees: any[] = d.by_employee || [];
-    const methods = Object.entries(d.by_method || {}).sort((a: any, b: any) => b[1] - a[1]);
+
+    const fmtDateShort = (ds: string) => {
+      if (!ds) return '—';
+      try { return new Date(ds).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return ds; }
+    };
+    const methodColor = (m: string) => {
+      const ml = (m || '').toLowerCase();
+      if (ml === 'cash') return '#10b981';
+      if (ml === 'upi') return '#8b5cf6';
+      if (ml.includes('bank') || ml.includes('transfer')) return '#3b82f6';
+      if (ml.includes('cheque') || ml.includes('check')) return '#f59e0b';
+      if (ml.includes('card')) return '#ec4899';
+      return '#6b7280';
+    };
+
     return (
       <>
+        {/* Employee Filter */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }} contentContainerStyle={{ gap: 6, paddingHorizontal: 2 }}>
+          <TouchableOpacity
+            style={[st.empChip, !serviceEmpFilter && st.empChipActive]}
+            onPress={() => setServiceEmpFilter(null)}
+          >
+            <Ionicons name="people" size={13} color={!serviceEmpFilter ? '#fff' : '#14b8a6'} />
+            <Text style={[st.empChipText, !serviceEmpFilter && st.empChipTextActive]}>All Staff</Text>
+          </TouchableOpacity>
+          {employees.filter(e => e.status === 'Active').map(emp => {
+            const active = serviceEmpFilter === emp.id;
+            return (
+              <TouchableOpacity
+                key={emp.id}
+                style={[st.empChip, active && st.empChipActive]}
+                onPress={() => setServiceEmpFilter(active ? null : emp.id)}
+              >
+                <Text style={[st.empChipText, active && st.empChipTextActive]}>{emp.name}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Stats */}
         <View style={st.grid2}>
           <StatCard label="Total Collected" value={fmt(d.total)} sub={d.count + ' payments'} icon="cash" accent="#14b8a6" />
-          <StatCard label="Staff" value={String(employees.length)} sub="service employees" icon="people" accent="#3b82f6" />
+          <StatCard label="Avg / Payment" value={fmt(d.count > 0 ? d.total / d.count : 0)} sub="per transaction" icon="analytics" accent="#3b82f6" />
         </View>
+
+        {/* Payment Records */}
         <View style={st.card}>
-          <Text style={st.cardTitle}>By Employee</Text>
-          {employees.length === 0 ? (
-            <Text style={st.emptyText}>No data</Text>
+          <Text style={st.cardTitle}>Payment Records ({servicePayments.length})</Text>
+          {servicePayments.length === 0 ? (
+            <Text style={st.emptyText}>No payments found</Text>
           ) : (
-            employees.sort((a, b) => b.total - a.total).map((emp, idx) => (
-              <View key={idx} style={st.listItem}>
-                <View style={[st.avatar, { backgroundColor: '#ccfbf1' }]}>
-                  <Text style={[st.avatarText, { color: '#0d9488' }]}>{initial(emp.employee_name)}</Text>
+            <>
+              {servicePayments.map((sp: any, idx: number) => (
+                <View key={sp.id || idx} style={{ paddingVertical: 10, borderBottomWidth: idx < servicePayments.length - 1 ? 1 : 0, borderBottomColor: '#f3f4f6' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={[st.avatar, { backgroundColor: '#ccfbf1', width: 34, height: 34, borderRadius: 10 }]}>
+                      <Text style={[st.avatarText, { color: '#0d9488' }]}>{initial(sp.employee_name || '?')}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#1f2937' }} numberOfLines={1}>
+                        {sp.customer_name || sp.task_title || 'Service Payment'}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        {sp.employee_name && <Text style={{ fontSize: 11, color: '#6b7280' }}>{sp.employee_name}</Text>}
+                        {sp.employee_name && <Text style={{ fontSize: 11, color: '#d1d5db' }}>·</Text>}
+                        <Text style={{ fontSize: 11, color: '#9ca3af' }}>{fmtDateShort(sp.payment_date)}</Text>
+                      </View>
+                      {sp.task_title && sp.customer_name && (
+                        <Text style={{ fontSize: 10, color: '#9ca3af', marginTop: 1 }} numberOfLines={1}>Task: {sp.task_title}</Text>
+                      )}
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#14b8a6' }}>{fmtD(sp.amount)}</Text>
+                      <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: methodColor(sp.payment_method) + '12', marginTop: 2 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: methodColor(sp.payment_method) }}>{sp.payment_method || 'Cash'}</Text>
+                      </View>
+                    </View>
+                  </View>
+                  {sp.notes ? <Text style={{ fontSize: 11, color: '#9ca3af', marginTop: 4, marginLeft: 44 }} numberOfLines={2}>{sp.notes}</Text> : null}
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={st.listPrimary}>{emp.employee_name}</Text>
-                  <Text style={st.listSecondary}>{emp.count} payments</Text>
-                </View>
-                <Text style={st.listAmount}>{fmtD(emp.total)}</Text>
+              ))}
+              <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 2, borderTopColor: '#e5e7eb', flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#1f2937' }}>Total ({servicePayments.length})</Text>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: '#14b8a6' }}>{fmtD(d.total)}</Text>
               </View>
-            ))
+            </>
           )}
         </View>
-        {methods.length > 0 && (
-          <View style={st.card}>
-            <Text style={st.cardTitle}>By Payment Method</Text>
-            {methods.map(([method, amount]: any) => (
-              <View key={method} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-                <View style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#e5e7eb', backgroundColor: '#f9fafb' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: '#374151' }}>{method}</Text>
-                </View>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#1f2937' }}>{fmtD(amount)}</Text>
-              </View>
-            ))}
-          </View>
-        )}
       </>
     );
   }
@@ -1160,6 +1227,15 @@ const st = StyleSheet.create({
     backgroundColor: '#f3f4f6', borderWidth: 1, borderColor: '#e5e7eb',
   },
   monthChipText: { fontSize: 11, fontWeight: '600', color: '#6b7280' },
+
+  empChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+    backgroundColor: '#f0fdfa', borderWidth: 1, borderColor: '#99f6e4',
+  },
+  empChipActive: { backgroundColor: '#14b8a6', borderColor: '#14b8a6' },
+  empChipText: { fontSize: 12, fontWeight: '600', color: '#14b8a6' },
+  empChipTextActive: { color: '#fff', fontWeight: '700' },
 
   sectionLabel: { fontSize: 11, fontWeight: '800', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
   shortcutCard: {

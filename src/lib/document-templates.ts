@@ -191,18 +191,22 @@ function classicTemplate(opts: BuildHtmlOptions): string {
   };
   const sColor = statusColor[doc.status || ''] || '#71717a';
 
-  const items = (doc.items || []).map((it, i) => `
+  const items = (doc.items || []).map((it, i) => {
+    const rateIncl = (it.rate || 0) * (1 + (it.tax_rate || 0) / 100);
+    const netAmt = (it.qty || 0) * (it.rate || 0) * (1 - ((it.discount_percent || 0) / 100));
+    return `
     <tr>
       <td style="color:#71717a">${i + 1}</td>
-      <td style="font-weight:500">${it.item_name || ''}${it.serial_numbers ? `<div style="font-family:monospace;font-size:10px;color:#2563eb;margin-top:2px">S/N: ${it.serial_numbers}</div>` : ''}</td>
-      <td style="color:#71717a;font-size:11px">${it.description || '—'}</td>
-      <td style="font-family:monospace;font-size:11px">${it.hsn_code || '—'}</td>
-      <td style="text-align:right;white-space:nowrap">${it.qty} ${it.unit || ''}</td>
+      <td style="font-weight:500">${it.item_name || ''}${it.serial_numbers ? `<div style="font-family:monospace;font-size:10px;color:#2563eb;margin-top:2px">S/N: ${it.serial_numbers}</div>` : ''}${it.description ? `<div style="color:#71717a;font-size:11px">${it.description}</div>` : ''}</td>
+      <td style="font-family:monospace;font-size:11px;text-align:center">${it.hsn_code || '—'}</td>
+      <td style="text-align:center;white-space:nowrap">${it.qty} ${it.unit || ''}</td>
+      <td style="text-align:right;white-space:nowrap">₹${fmt(rateIncl)}</td>
+      <td style="text-align:center">${it.tax_rate || 0}%</td>
       <td style="text-align:right;white-space:nowrap">₹${fmt(it.rate || 0)}</td>
-      <td style="text-align:right">${it.discount_percent || 0}%</td>
-      <td style="text-align:right">${it.tax_rate || 0}%</td>
-      <td style="text-align:right;font-weight:500;white-space:nowrap">₹${fmt(it.amount || 0)}</td>
-    </tr>`).join('');
+      <td style="text-align:center">${it.discount_percent || 0}%</td>
+      <td style="text-align:right;font-weight:500;white-space:nowrap">₹${fmt(netAmt)}</td>
+    </tr>`;
+  }).join('');
 
   const paymentRows = payments.map((p) => `
     <tr>
@@ -301,13 +305,14 @@ function classicTemplate(opts: BuildHtmlOptions): string {
 
     <table class="items" style="margin-top:18px">
       <thead><tr>
-        <th style="width:40px">#</th><th>Item</th><th>Description</th>
-        <th style="width:80px">HSN</th>
-        <th style="text-align:right;width:56px">Qty</th>
-        <th style="text-align:right;width:80px">Rate</th>
-        <th style="text-align:right;width:56px">Disc%</th>
-        <th style="text-align:right;width:56px">Tax%</th>
-        <th style="text-align:right;width:96px">Amount</th>
+        <th style="width:30px">Sl.</th><th>Item</th>
+        <th style="text-align:center;width:55px">HSN</th>
+        <th style="text-align:center;width:40px">Qty</th>
+        <th style="text-align:right;width:70px">Rate (Incl.)</th>
+        <th style="text-align:center;width:45px">GST%</th>
+        <th style="text-align:right;width:65px">Net Rate</th>
+        <th style="text-align:center;width:45px">Disc%</th>
+        <th style="text-align:right;width:70px">Amount</th>
       </tr></thead>
       <tbody>${items}</tbody>
     </table>
@@ -382,44 +387,86 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
   const partyLabel = isPurchaseBill ? 'Vendor' : 'Bill To';
   const vendorBillNumber = (doc as any).vendor_bill_number;
 
-  const items = (doc.items || []).map((it, i) => `
+  const items = (doc.items || []).map((it, i) => {
+    const rateIncl = (it.rate || 0) * (1 + (it.tax_rate || 0) / 100);
+    const netAmt = (it.qty || 0) * (it.rate || 0) * (1 - ((it.discount_percent || 0) / 100));
+    return `
     <tr style="border-bottom:1px solid #e4e4e7">
-      <td style="padding:10px 12px">${i + 1}</td>
-      <td style="padding:10px 12px">
+      <td style="padding:10px 8px">${i + 1}</td>
+      <td style="padding:10px 8px">
         <div style="font-weight:500">${it.item_name || ''}</div>
         ${it.serial_numbers ? `<div style="font-size:11px;color:#52525b;font-family:monospace">S/N: ${it.serial_numbers}</div>` : ''}
         ${it.description ? `<div style="font-size:11px;color:#71717a">${it.description}</div>` : ''}
       </td>
-      <td style="padding:10px 12px;text-align:right;color:#52525b;white-space:nowrap">${it.qty || 0} ${it.unit || ''}</td>
-      <td style="padding:10px 12px;text-align:right;color:#52525b;white-space:nowrap">${fmt(it.rate || 0)}</td>
-      <td style="padding:10px 12px;text-align:right;white-space:nowrap">${fmt(it.amount || 0)}</td>
-    </tr>`).join('');
+      <td style="padding:10px 8px;text-align:center;color:#52525b;font-size:11px">${it.hsn_code || '-'}</td>
+      <td style="padding:10px 8px;text-align:center;white-space:nowrap">${it.qty || 0}</td>
+      <td style="padding:10px 8px;text-align:right;color:#52525b;white-space:nowrap">${fmt(rateIncl)}</td>
+      <td style="padding:10px 8px;text-align:center;color:#52525b">${it.tax_rate || 0}%</td>
+      <td style="padding:10px 8px;text-align:right;color:#52525b;white-space:nowrap">${fmt(it.rate || 0)}</td>
+      <td style="padding:10px 8px;text-align:center;color:#52525b">${it.discount_percent || 0}%</td>
+      <td style="padding:10px 8px;text-align:right;white-space:nowrap">${fmt(netAmt)}</td>
+    </tr>`;
+  }).join('');
+
+  // Calculate valid-until days
+  let validUntilStr = '';
+  if (isQuotation && doc.valid_until && docDate) {
+    const d1 = new Date(docDate);
+    const d2 = new Date(doc.valid_until);
+    const diffDays = Math.ceil((d2.getTime() - d1.getTime()) / 86400000);
+    if (diffDays > 0) validUntilStr = `Quote valid ${diffDays} days from the date of this quotation`;
+  }
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontFamily)}:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *{box-sizing:border-box}
+    @page{margin:0;size:A4}
     body{font-family:'${fontFamily}',system-ui,sans-serif;margin:0;color:#18181b;font-size:${baseSize}px;line-height:1.5;background:#fff}
-    .page{display:flex;flex-direction:column;min-height:100vh;padding:32px 40px 0}
+
+    /* ─── Fixed Header (repeats on every page) ─── */
+    .pdf-header{
+      position:fixed;top:0;left:0;right:0;
+      background:#fff;
+      padding:28px 40px 12px;
+      z-index:10;
+    }
     .head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px}
     .logo{height:80px;width:80px;object-fit:contain}
     .logo-fallback{height:80px;width:80px;background:${BLUE};color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700}
-    .title{font-size:30px;font-weight:700;color:${BLUE};margin:0 0 8px}
-    .biz-name{font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin:0;color:#18181b}
+    .title{font-size:28px;font-weight:700;font-style:italic;color:${BLUE};margin:0 0 6px}
+    .biz-name{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin:0;color:#18181b}
     .biz-info{font-size:11px;color:#3f3f46;margin:1px 0}
-    .info-row{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-top:18px}
-    .bill-card{border:1px solid #e4e4e7;border-radius:8px;padding:14px 18px;flex:1;max-width:420px}
+    .gradient-bar{height:4px;width:100%;border-radius:4px;background:linear-gradient(to right,${TEAL},${BLUE});margin-top:12px}
+
+    /* ─── Fixed Footer (repeats on every page) ─── */
+    .pdf-footer{
+      position:fixed;bottom:0;left:0;right:0;
+      z-index:10;
+    }
+    .footer-text{text-align:center;padding:4px 32px 4px;font-size:10px;color:#52525b}
+    .footer-wave{width:100%;height:48px;display:block}
+
+    /* ─── Content area with margins for header/footer ─── */
+    .content{
+      padding:190px 40px 170px;
+    }
+
+    .info-row{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-top:4px}
+    .bill-card{border:1px solid #d4d4d8;border-radius:8px;padding:14px 18px;flex:1;max-width:420px}
     .bill-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#71717a;margin:0 0 6px}
     .bill-name{font-weight:700;font-size:13px;margin:0 0 2px}
     .bill-line{font-size:11px;color:#52525b;margin:1px 0}
-    .pill{border:1px solid #e4e4e7;border-radius:999px;padding:6px 16px;font-size:11px;display:block;margin-bottom:8px;white-space:nowrap}
+    .pill-box{display:flex;flex-direction:column;gap:6px;flex-shrink:0}
+    .pill{border:1px solid #d4d4d8;border-radius:6px;padding:5px 14px;font-size:11px;display:block;white-space:nowrap;text-align:right}
     .pill-key{color:#52525b}
     .pill-val{font-weight:700;color:#18181b}
     .greet{margin-top:16px}
     .greet p{margin:2px 0;font-size:12px;color:#3f3f46}
     table.items{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px;min-width:500px}
     table.items thead th{padding:8px 12px;text-align:left;font-weight:700;color:#fff;white-space:nowrap;border:1px solid rgba(255,255,255,0.3);background-color:${BLUE};-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    .sum-wrap{display:flex;justify-content:flex-end;margin-top:14px}
+    table.items tr{page-break-inside:avoid;break-inside:avoid}
+    .sum-wrap{display:flex;justify-content:flex-end;margin-top:14px;page-break-inside:avoid;break-inside:avoid}
     .summary{width:300px;font-size:12px}
     .sum-row{display:flex;justify-content:space-between;padding:3px 0}
     .sum-row .lbl{color:#52525b}
@@ -433,10 +480,16 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
     .sig-wrap{display:flex;justify-content:flex-end;margin-top:24px;page-break-inside:avoid}
     .sig{height:56px;object-fit:contain;display:block;margin:0 auto}
     .sig-cap{font-size:10px;color:#52525b;text-align:center;margin-top:4px}
-    .wave-wrap{margin-top:auto;margin-left:-40px;margin-right:-40px}
-    .wave-text{text-align:center;padding:4px 32px 12px;font-size:10px;color:#52525b}
-    @media print{body{padding:0}@page{margin:0}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}
-  </style></head><body><div class="page">
+    .valid-until{font-size:11px;color:#52525b;font-style:italic;margin-top:10px}
+
+    @media print{
+      body{padding:0}
+      *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+    }
+  </style></head><body>
+
+  <!-- ═══ FIXED HEADER ═══ -->
+  <div class="pdf-header">
     <div class="head">
       <div>${logoUrl ? `<img class="logo" src="${logoUrl}" alt=""/>` : `<div class="logo-fallback">${(business?.business_name || '?').charAt(0)}</div>`}</div>
       <div style="text-align:right;flex:1">
@@ -448,7 +501,20 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
         ${business?.email ? `<p class="biz-info">Email: ${business.email}</p>` : ''}
       </div>
     </div>
+    <div class="gradient-bar"></div>
+  </div>
 
+  <!-- ═══ FIXED FOOTER ═══ -->
+  <div class="pdf-footer">
+    <div class="footer-text">${settings?.footer_text || `This is a computer generated ${docType}`}</div>
+    <svg class="footer-wave" viewBox="0 0 600 60" preserveAspectRatio="none">
+      <path d="M0,40 Q150,0 300,30 T600,20 L600,60 L0,60 Z" fill="${BLUE}" opacity="0.85"/>
+      <path d="M0,50 Q150,20 300,40 T600,35 L600,60 L0,60 Z" fill="${BLUE}"/>
+    </svg>
+  </div>
+
+  <!-- ═══ CONTENT (flows between header & footer) ═══ -->
+  <div class="content">
     <div class="info-row">
       <div class="bill-card">
         <p class="bill-label">${partyLabel}</p>
@@ -458,7 +524,7 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
         ${customer?.mobile ? `<p class="bill-line">Tel: ${customer.mobile}</p>` : ''}
         ${customer?.gst_number ? `<p class="bill-line">GSTIN: ${customer.gst_number}</p>` : ''}
       </div>
-      <div>
+      <div class="pill-box">
         <span class="pill"><span class="pill-key">Date: </span><span class="pill-val">${fmtDate(docDate, true)}</span></span>
         <span class="pill"><span class="pill-key">${numberLabel} </span><span class="pill-val">${docNumber}</span></span>
         ${vendorBillNumber ? `<span class="pill"><span class="pill-key">Vendor Bill # </span><span class="pill-val">${vendorBillNumber}</span></span>` : ''}
@@ -476,10 +542,14 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
 
     <table class="items">
       <thead><tr>
-        <th style="width:40px">S.No.</th><th>Item Details</th>
-        <th style="text-align:right;width:70px">Qty</th>
-        <th style="text-align:right;width:80px">Price</th>
-        <th style="text-align:right;width:90px">Total</th>
+        <th style="width:30px">Sl.</th><th>Item</th>
+        <th style="text-align:center;width:55px">HSN</th>
+        <th style="text-align:center;width:40px">Qty</th>
+        <th style="text-align:right;width:70px">Rate (Incl.)</th>
+        <th style="text-align:center;width:45px">GST%</th>
+        <th style="text-align:right;width:65px">Net Rate</th>
+        <th style="text-align:center;width:45px">Disc%</th>
+        <th style="text-align:right;width:70px">Amount</th>
       </tr></thead>
       <tbody>${items}</tbody>
     </table>
@@ -494,6 +564,8 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
         <div class="sum-row" style="color:#16a34a"><span>Amount Paid</span><span>₹${fmt(doc.amount_paid || 0)}</span></div>
         <div class="sum-row" style="color:#dc2626;font-weight:700"><span>${isPurchaseBill ? 'Balance Payable' : 'Balance Due'}</span><span>₹${fmt(doc.balance_due || 0)}</span></div>` : ''}
     </div></div>
+
+    ${validUntilStr ? `<p class="valid-until">${validUntilStr}</p>` : ''}
 
     ${(settings?.bank_name || settings?.qr_code_image) ? `
       <div class="bank-grid">
@@ -518,15 +590,9 @@ function modernBlueTemplate(opts: BuildHtmlOptions): string {
         <img class="sig" src="${baseUrl}/assets/${assetDir}/${settings.signature_image}" alt=""/>
         <div class="sig-cap">Authorized Signature</div>
       </div></div>` : ''}
+  </div>
 
-    <div class="wave-wrap">
-      <div class="wave-text">${settings?.footer_text || `This is a computer generated ${docType}`} &nbsp;·&nbsp; Page 1 of 1</div>
-      <svg viewBox="0 0 600 60" preserveAspectRatio="none" style="width:100%;height:48px;display:block">
-        <path d="M0,40 Q150,0 300,30 T600,20 L600,60 L0,60 Z" fill="${BLUE}" opacity="0.85"/>
-        <path d="M0,50 Q150,20 300,40 T600,35 L600,60 L0,60 Z" fill="${BLUE}"/>
-      </svg>
-    </div>
-  </div></body></html>`;
+  </body></html>`;
 }
 
 // ============================================================
@@ -567,7 +633,9 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
   const roundOff = Math.round(grandTotal) - grandTotal;
   const finalTotal = grandTotal + roundOff;
 
-  const items = lines.map((it, i) => `
+  const items = lines.map((it, i) => {
+    const rateIncl = (it.rate || 0) * (1 + (it.tax_rate || 0) / 100);
+    return `
     <tr>
       <td class="cell" style="text-align:center">${i + 1}</td>
       <td class="cell">
@@ -576,13 +644,14 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
         ${it.description ? `<div>${it.description}</div>` : ''}
       </td>
       <td class="cell" style="text-align:center">${it.hsn_code || ''}</td>
-      <td class="cell" style="text-align:center">${it.tax_rate ? `${it.tax_rate}%` : ''}</td>
       <td class="cell" style="text-align:right">${it.qty || 0} ${it.unit || 'No'}</td>
+      <td class="cell" style="text-align:right">${fmt(rateIncl)}</td>
+      <td class="cell" style="text-align:center">${it.tax_rate ? `${it.tax_rate}%` : ''}</td>
       <td class="cell" style="text-align:right">${fmt(it.rate || 0)}</td>
-      <td class="cell" style="text-align:center">${it.unit || 'No'}</td>
       <td class="cell" style="text-align:right">${it.discount_percent ? `${it.discount_percent}%` : ''}</td>
       <td class="cell" style="text-align:right">${fmt(it.taxable)}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <link href="https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontFamily)}:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -668,10 +737,10 @@ function tallyTaxTemplate(opts: BuildHtmlOptions): string {
         <td class="cell" style="text-align:center">Sl<br/>No.</td>
         <td class="cell">Description of Goods</td>
         <td class="cell" style="text-align:center">HSN/SAC</td>
+        <td class="cell" style="text-align:center">Qty</td>
+        <td class="cell" style="text-align:right">Rate<br/>(Incl.)</td>
         <td class="cell" style="text-align:center">GST<br/>%</td>
-        <td class="cell" style="text-align:center">Quantity</td>
-        <td class="cell" style="text-align:right">Rate</td>
-        <td class="cell" style="text-align:center">per</td>
+        <td class="cell" style="text-align:right">Net<br/>Rate</td>
         <td class="cell" style="text-align:right">Disc<br/>%</td>
         <td class="cell" style="text-align:right">Amount</td>
       </tr>

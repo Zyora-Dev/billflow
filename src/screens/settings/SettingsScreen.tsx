@@ -202,6 +202,48 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
         </View>
       </TouchableOpacity>
 
+      {/* Invoice Settings */}
+      <TouchableOpacity style={s.card} onPress={() => navigation.navigate('InvoiceSettings')} activeOpacity={0.7}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Ionicons name="receipt-outline" size={20} color="#10B981" />
+            <View>
+              <Text style={s.cardTitle}>Invoice Settings</Text>
+              <Text style={{ fontSize: 12, color: colors.gray600, marginTop: 2 }}>Template, numbering, UPI, bank & logo</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.gray400} />
+        </View>
+      </TouchableOpacity>
+
+      {/* Quotation Settings */}
+      <TouchableOpacity style={s.card} onPress={() => navigation.navigate('QuotationSettings')} activeOpacity={0.7}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Ionicons name="pricetag-outline" size={20} color="#2596d4" />
+            <View>
+              <Text style={s.cardTitle}>Quotation Settings</Text>
+              <Text style={{ fontSize: 12, color: colors.gray600, marginTop: 2 }}>Template, numbering, bank & logo</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.gray400} />
+        </View>
+      </TouchableOpacity>
+
+      {/* Purchase Bill Settings */}
+      <TouchableOpacity style={s.card} onPress={() => navigation.navigate('PurchaseBillSettings')} activeOpacity={0.7}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Ionicons name="settings-outline" size={20} color="#f97316" />
+            <View>
+              <Text style={s.cardTitle}>Purchase Bill Settings</Text>
+              <Text style={{ fontSize: 12, color: colors.gray600, marginTop: 2 }}>Template, numbering, bank & logo</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.gray400} />
+        </View>
+      </TouchableOpacity>
+
       {/* Subscription */}
       <TouchableOpacity style={s.card} onPress={() => navigation.navigate('Subscription')} activeOpacity={0.7}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>

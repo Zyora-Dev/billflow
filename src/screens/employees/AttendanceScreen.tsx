@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../../api/client';
+import { useAuth } from '../../auth/AuthContext';
 import { colors, spacing, fontSize } from '../../theme';
 import EmptyState from '../../components/EmptyState';
 
@@ -33,6 +34,9 @@ function avatarColor(name: string) {
 function pad(n: number) { return n < 10 ? `0${n}` : `${n}`; }
 
 export default function AttendanceScreen({ navigation }: { navigation: any }) {
+  const { user } = useAuth();
+  const isStaff = user?.role === 'staff';
+  const staffEmpId = user?.employee_id;
   const now = new Date();
   const [view, setView] = useState<'daily' | 'monthly'>('daily');
   const [orgId, setOrgId] = useState('');
@@ -57,13 +61,18 @@ export default function AttendanceScreen({ navigation }: { navigation: any }) {
       if (oid) {
         setOrgId(oid);
         const res = await api.get(`/api/employees?org_id=${oid}&status=Active`);
-        setEmployees(Array.isArray(res.data) ? res.data : []);
+        let emps = Array.isArray(res.data) ? res.data : [];
+        // Staff only sees their own record
+        if (isStaff && staffEmpId) {
+          emps = emps.filter((e: any) => e.id === staffEmpId);
+        }
+        setEmployees(emps);
       }
     } catch {} finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isStaff, staffEmpId]);
 
   const fetchDailyAttendance = useCallback(async () => {
     if (!orgId) return;
@@ -159,8 +168,8 @@ export default function AttendanceScreen({ navigation }: { navigation: any }) {
       <View style={s.empCard}>
         <TouchableOpacity
           style={s.empRow}
-          onPress={() => navigation.navigate('EmployeeDetail', { id: item.id })}
-          activeOpacity={0.85}
+          onPress={() => !isStaff && navigation.navigate('EmployeeDetail', { id: item.id })}
+          activeOpacity={isStaff ? 1 : 0.85}
         >
           <View style={[s.avatar, { backgroundColor: a.bg }]}>
             <Text style={[s.avatarText, { color: a.fg }]}>{(item.name || '?')[0].toUpperCase()}</Text>
@@ -204,10 +213,11 @@ export default function AttendanceScreen({ navigation }: { navigation: any }) {
         <View style={s.heroAccent} />
         <View style={s.heroTopRow}>
           <View>
-            <Text style={s.heroEyebrow}>Attendance</Text>
-            <Text style={s.heroValue}>{employees.length}</Text>
-            <Text style={s.heroSub}>active employees</Text>
+            <Text style={s.heroEyebrow}>{isStaff ? 'My Attendance' : 'Attendance'}</Text>
+            <Text style={s.heroValue}>{isStaff ? (employees[0]?.name || 'You') : employees.length}</Text>
+            <Text style={s.heroSub}>{isStaff ? 'Mark your attendance' : 'active employees'}</Text>
           </View>
+          {!isStaff && (
           <View style={s.viewToggle}>
             <TouchableOpacity
               style={[s.toggleBtn, view === 'daily' && s.toggleActive]}
@@ -224,6 +234,7 @@ export default function AttendanceScreen({ navigation }: { navigation: any }) {
               <Text style={[s.toggleText, view === 'monthly' && s.toggleTextActive]}>Monthly</Text>
             </TouchableOpacity>
           </View>
+          )}
         </View>
       </View>
 
@@ -231,23 +242,29 @@ export default function AttendanceScreen({ navigation }: { navigation: any }) {
         <>
           {/* Date + Action bar */}
           <View style={s.dateBar}>
+            {!isStaff && (
             <TouchableOpacity onPress={() => changeDate(-1)} style={s.dateArrow}>
               <Ionicons name="chevron-back" size={18} color={colors.primary} />
             </TouchableOpacity>
+            )}
             <TouchableOpacity onPress={() => setSelectedDate(now.toISOString().split('T')[0])}>
               <Text style={s.dateText}>{isToday ? 'Today' : dateDisplay}</Text>
             </TouchableOpacity>
+            {!isStaff && (
             <TouchableOpacity onPress={() => changeDate(1)} style={s.dateArrow}>
               <Ionicons name="chevron-forward" size={18} color={colors.primary} />
             </TouchableOpacity>
+            )}
           </View>
 
           {/* Quick actions */}
           <View style={s.actionBar}>
+            {!isStaff && (
             <TouchableOpacity style={s.markAllBtn} onPress={markAllPresent} activeOpacity={0.85}>
               <Ionicons name="checkmark-done" size={14} color="#15803d" />
               <Text style={s.markAllText}>Mark All Present</Text>
             </TouchableOpacity>
+            )}
             <View style={s.counterBadge}>
               <Text style={s.counterText}>{presentCount}/{employees.length}</Text>
             </View>
@@ -283,7 +300,7 @@ export default function AttendanceScreen({ navigation }: { navigation: any }) {
             )}
           />
         </>
-      ) : (
+      ) : !isStaff ? (
         <ScrollView
           contentContainerStyle={{ paddingBottom: 30 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchEmployees(); }} />}
@@ -356,7 +373,7 @@ export default function AttendanceScreen({ navigation }: { navigation: any }) {
             </View>
           </View>
         </ScrollView>
-      )}
+      ) : null}
     </View>
   );
 }
