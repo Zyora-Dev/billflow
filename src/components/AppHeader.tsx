@@ -56,6 +56,7 @@ export default function AppHeader({
   const tapTimer = useRef<any>(null);
 
   useEffect(() => {
+    if (user?.role === 'staff') return; // Staff can't list businesses
     (async () => {
       try {
         const r = await api.get('/api/business');
@@ -64,7 +65,7 @@ export default function AppHeader({
         if (biz?.business_logo) setBizLogo(biz.business_logo);
       } catch {}
     })();
-  }, []);
+  }, [user?.role]);
 
   const onTitleTap = () => {
     tapCount.current += 1;
@@ -144,7 +145,11 @@ export default function AppHeader({
             )}
             <TouchableOpacity
               style={[s.avatar, stealthActive && { backgroundColor: '#22c55e' }]}
-              onPress={() => navigation.navigate('Settings')}
+              onPress={() => {
+                // Staff has no Settings tab
+                if (user?.role === 'staff') return;
+                navigation.navigate('Settings');
+              }}
               activeOpacity={0.85}
             >
               {stealthActive ? (

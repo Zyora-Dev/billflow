@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme';
 import { useQuickAdd } from '../components/QuickAddFAB';
 import { useGlobalSearch } from '../components/GlobalSearch';
+import { useAuth } from '../auth/AuthContext';
 import haptic from '../lib/haptics';
 
 const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -15,6 +16,8 @@ const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   Customers: 'people',
   Purchase: 'bag-handle',
   Vendors: 'storefront',
+  Tasks: 'checkbox',
+  MyAttendance: 'calendar',
 };
 
 interface TabItemProps {
@@ -89,6 +92,8 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
   const insets = useSafeAreaInsets();
   const { open: openQuickAdd, isOpen } = useQuickAdd();
   const { open: openSearch } = useGlobalSearch();
+  const { user } = useAuth();
+  const isStaff = user?.role === 'staff';
   const fabScale = useRef(new Animated.Value(1)).current;
   const fabRotate = useRef(new Animated.Value(0)).current;
 
@@ -155,7 +160,8 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
       <View style={styles.bar}>
         {leftRoutes.map(renderTab)}
 
-        {/* Center FAB slot */}
+        {/* Center FAB slot — hidden for staff */}
+        {!isStaff && (
         <View style={styles.fabSlot}>
           <Pressable
             onPress={() => {
@@ -179,6 +185,7 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
             </Animated.View>
           </Pressable>
         </View>
+        )}
 
         {rightRoutes.map(renderTab)}
       </View>

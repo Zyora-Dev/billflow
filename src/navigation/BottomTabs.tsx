@@ -93,6 +93,7 @@ import EstimateListScreen from '../screens/estimates/EstimateListScreen';
 import EstimateDetailScreen from '../screens/estimates/EstimateDetailScreen';
 import EstimateFormScreen from '../screens/estimates/EstimateFormScreen';
 import CustomTabBar from './CustomTabBar';
+import StaffAttendanceScreen from '../screens/employees/StaffAttendanceScreen';
 import { QuickAddProvider } from '../components/QuickAddFAB';
 import { GlobalSearchProvider, useGlobalSearch } from '../components/GlobalSearch';
 import { PreviewProvider } from '../components/Preview';
@@ -226,9 +227,12 @@ function ScreenHeader({ navigation, route, options, back }: any) {
   const { open: openDrawer } = useDrawer();
   const { open: openSearch } = useGlobalSearch();
   const { prompt } = useStealthPrompt();
+  const { user } = useAuth();
+  const isAdmin = !user?.role || user.role === 'admin';
   const [notifCount, setNotifCount] = useState(0);
 
   useEffect(() => {
+    if (!isAdmin) return; // Staff: no notifications
     const f = async () => {
       try {
         const b = await api.get('/api/business');
@@ -243,7 +247,7 @@ function ScreenHeader({ navigation, route, options, back }: any) {
     const i = setInterval(f, 60000);
     const unsub = navigation.addListener('focus', f);
     return () => { clearInterval(i); unsub(); };
-  }, [navigation]);
+  }, [navigation, isAdmin]);
 
   const title = options.title ?? route.name;
   const subtitle = options.headerSubtitle;
@@ -256,10 +260,10 @@ function ScreenHeader({ navigation, route, options, back }: any) {
       showMenu={isRoot}
       onMenu={isRoot ? openDrawer : undefined}
       onBack={back ? () => navigation.goBack() : undefined}
-      onSearch={openSearch}
-      onBell={() => navigation.navigate('Notifications')}
-      onTitleTriplePress={prompt}
-      notificationCount={notifCount}
+      onSearch={isAdmin ? openSearch : undefined}
+      onBell={isAdmin ? () => navigation.navigate('Notifications') : undefined}
+      onTitleTriplePress={isAdmin ? prompt : undefined}
+      notificationCount={isAdmin ? notifCount : 0}
     />
   );
 }
@@ -401,6 +405,12 @@ function TaskStack() {
         headerLeft: () => <TaskBackButton />,
       })}
     />
+  </Stack.Navigator>);
+}
+
+function StaffAttendanceStack() {
+  return (<Stack.Navigator screenOptions={navHeader}>
+    <Stack.Screen name="StaffAttendanceHome" component={StaffAttendanceScreen} options={{ title: 'My Attendance' }} />
   </Stack.Navigator>);
 }
 
@@ -551,27 +561,42 @@ function BottomTabs() {
   const isAdmin = !user?.role || user.role === 'admin';
   const perms = user?.module_permissions || [];
 
-  // Visible tabs change based on stealth mode and role
-  // Staff: only show tabs they have permission for
-  let visibleSet: Set<string>;
+  // Staff: only Tasks + My Attendance — nothing else
   if (!isAdmin) {
-    // Staff — map permissions to tab names
     const staffTabs = new Set<string>();
     if (perms.includes('tasks') || perms.includes('orders')) staffTabs.add('Tasks');
-    if (perms.includes('invoices')) staffTabs.add('Invoices');
-    if (perms.includes('expenses')) staffTabs.add('Expenses');
-    if (perms.includes('customers')) staffTabs.add('Customers');
-    if (perms.includes('purchase_bills')) staffTabs.add('Purchase');
-    if (perms.includes('vendors')) staffTabs.add('Vendors');
-    if (perms.includes('dashboard')) staffTabs.add('Dashboard');
-    // Always show at least Dashboard if nothing else
-    if (staffTabs.size === 0) staffTabs.add('Dashboard');
-    visibleSet = staffTabs;
-  } else if (stealthActive) {
-    visibleSet = new Set(['Dashboard', 'Invoices', 'Purchase', 'Customers', 'Vendors']);
-  } else {
-    visibleSet = new Set(['Dashboard', 'Invoices', 'Expenses', 'Purchase']);
+    if (perms.includes('attendance')) staffTabs.add('MyAttendance');
+    if (staffTabs.size === 0) staffTabs.add('Tasks');
+
+    return (
+      <Tab.Navigator
+        tabBar={(props) => <CustomTabBar {...props} />}
+        screenOptions={({ route }) => ({
+          headerShown: false,
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.gray400,
+          tabBarStyle: { height: 65 + insets.bottom, paddingTop: 8, paddingBottom: 10 + insets.bottom, backgroundColor: '#ffffff', borderTopWidth: 1, borderTopColor: '#e5e7eb', elevation: 8, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8 },
+          tabBarLabelStyle: { fontSize: 11, fontWeight: '600' as const },
+          tabBarIcon: ({ color }) => {
+            const icons: Record<string, keyof typeof Ionicons.glyphMap> = { Tasks: 'checkbox', MyAttendance: 'calendar' };
+            return <Ionicons name={icons[route.name] || 'ellipsis-horizontal'} size={24} color={color} />;
+          },
+        })}
+      >
+        {staffTabs.has('Tasks') && (
+          <Tab.Screen name="Tasks" component={TaskStack} options={{ title: 'Tasks' }} />
+        )}
+        {staffTabs.has('MyAttendance') && (
+          <Tab.Screen name="MyAttendance" component={StaffAttendanceStack} options={{ title: 'Attendance' }} />
+        )}
+      </Tab.Navigator>
+    );
   }
+
+  // Admin tabs
+  const visibleSet = stealthActive
+    ? new Set(['Dashboard', 'Invoices', 'Purchase', 'Customers', 'Vendors'])
+    : new Set(['Dashboard', 'Invoices', 'Expenses', 'Purchase']);
 
   const hidden = (name: string) => visibleSet.has(name) ? undefined : { tabBarItemStyle: { display: 'none' as const } };
 
@@ -741,12 +766,6 @@ function DrawerNavigator({ visible, onClose }: { visible: boolean; onClose: () =
   const isAdmin = !user?.role || user.role === 'admin';
   const perms = user?.module_permissions || [];
 
-  const isAllowed = (moduleKey?: string) => {
-    if (isAdmin) return true;
-    if (!moduleKey) return isAdmin; // no moduleKey = admin-only (Business, Settings, etc.)
-    return perms.includes(moduleKey);
-  };
-
   const navigateTab = (tab: string, screen?: string) => {
     onClose();
     setTimeout(() => {
@@ -755,6 +774,53 @@ function DrawerNavigator({ visible, onClose }: { visible: boolean; onClose: () =
     }, 100);
   };
   const handleLogout = () => { onClose(); Alert.alert('Logout', 'Are you sure?', [{ text: 'Cancel' }, { text: 'Logout', style: 'destructive', onPress: logout }]); };
+
+  // Staff: minimal drawer — only Tasks & My Attendance + Logout
+  if (!isAdmin) {
+    const staffItems: { label: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void }[] = [];
+    if (perms.includes('tasks') || perms.includes('orders')) {
+      staffItems.push({ label: 'Tasks & Orders', icon: 'checkbox-outline', onPress: () => navigateTab('Tasks') });
+    }
+    if (perms.includes('attendance')) {
+      staffItems.push({ label: 'My Attendance', icon: 'calendar-outline', onPress: () => navigateTab('MyAttendance') });
+    }
+
+    return (
+      <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+        <View style={dS.overlay}>
+          <TouchableOpacity style={dS.backdrop} activeOpacity={1} onPress={onClose} />
+          <View style={dS.drawer}>
+            <View style={dS.header}>
+              <View style={dS.avatar}><Ionicons name="person" size={28} color={colors.white} /></View>
+              <Text style={dS.email} numberOfLines={1}>{user?.email || 'User'}</Text>
+              <Text style={dS.role}>Staff</Text>
+            </View>
+            <ScrollView contentContainerStyle={{ paddingBottom: spacing.md }}>
+              {staffItems.map((item, i) => (
+                <TouchableOpacity key={i} style={dS.menuItem} onPress={item.onPress} activeOpacity={0.7}>
+                  <View style={dS.menuIconWrap}>
+                    <Ionicons name={item.icon} size={18} color={colors.primary} />
+                  </View>
+                  <Text style={dS.menuLabel}>{item.label}</Text>
+                  <Ionicons name="chevron-forward" size={14} color={colors.gray300} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={dS.logoutBtn} onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={22} color={colors.danger} />
+              <Text style={dS.logoutText}>Logout</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
+  // Admin drawer
+  const isAllowed = (moduleKey?: string) => {
+    if (!moduleKey) return true; // admin sees everything
+    return true;
+  };
 
   const visibleGroups = drawerGroups
     .filter(g => !(isPrivate && g.hideWhenPrivate))
