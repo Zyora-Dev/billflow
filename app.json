@@ -2,7 +2,7 @@
   "expo": {
     "name": "SpectraBooks",
     "slug": "billflow",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/spectra-app.png",
     "userInterfaceStyle": "light",
@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "com.spectrasaas.books",
-      "versionCode": 11,
+      "versionCode": 15,
       "adaptiveIcon": {
         "foregroundImage": "./assets/spectra-adaptive.png",
         "backgroundColor": "#064e3b"
