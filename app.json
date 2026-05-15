@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "com.spectrasaas.books",
-      "versionCode": 10,
+      "versionCode": 11,
       "adaptiveIcon": {
         "foregroundImage": "./assets/spectra-adaptive.png",
         "backgroundColor": "#064e3b"
