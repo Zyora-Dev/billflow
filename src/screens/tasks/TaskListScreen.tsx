@@ -8,6 +8,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import DateInput from '../../components/DateInput';
 import api from '../../api/client';
+import { useAuth } from '../../auth/AuthContext';
 import { colors, spacing, fontSize, borderRadius } from '../../theme';
 import EmptyState from '../../components/EmptyState';
 import { SkeletonList } from '../../components/Skeleton';
@@ -71,6 +72,7 @@ function isWithin(taskDate: string | null | undefined, period: Period): boolean 
 const PAYMENT_METHODS = ['Cash', 'UPI', 'Bank Transfer', 'Cheque', 'Card', 'Other'];
 
 export default function TaskListScreen({ navigation }: { navigation: any }) {
+  const { user } = useAuth();
   const [tasks, setTasks] = useState<any[]>([]);
   const [status, setStatus] = useState('All');
   const [category, setCategory] = useState('All');
@@ -101,8 +103,11 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
 
   const fetchData = useCallback(async () => {
     try {
-      const biz = await api.get('/api/business');
-      const oid = biz.data[0]?.org_id;
+      let oid = user?.org_id || '';
+      if (!oid) {
+        const biz = await api.get('/api/business');
+        oid = biz.data[0]?.org_id || '';
+      }
       if (oid) {
         setOrgId(oid);
         const res = await api.get(`/api/tasks?org_id=${oid}&task_type=${tab}`);
@@ -112,7 +117,7 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [tab]);
+  }, [tab, user?.org_id]);
 
   useEffect(() => { setLoading(true); fetchData(); }, [fetchData]);
   useEffect(() => {

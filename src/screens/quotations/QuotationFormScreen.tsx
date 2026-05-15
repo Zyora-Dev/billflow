@@ -47,6 +47,13 @@ export default function QuotationFormScreen({ route, navigation }: { route: any;
   const addCustomItem = () => { setLineItems(prev => [...prev, { item_id: undefined, item_name: '', description: '', unit: 'Nos', qty: 1, rate: 0, discount_percent: 0, tax_rate: 0, amount: 0 }]); setShowItemPicker(false); };
   const updateLine = (idx: number, key: string, val: any) => { setLineItems(p => { const u = [...p]; (u[idx] as any)[key] = val; u[idx].amount = calc(u[idx]); return u; }); };
   const removeLine = (idx: number) => setLineItems(p => p.filter((_, i) => i !== idx));
+  const insertLine = (afterIdx: number) => {
+    setLineItems(p => {
+      const copy = [...p];
+      copy.splice(afterIdx + 1, 0, { item_id: undefined, item_name: '', description: '', unit: 'Nos', qty: 1, rate: 0, discount_percent: 0, tax_rate: 0, amount: 0 });
+      return copy;
+    });
+  };
 
   const subtotal = lineItems.reduce((s, l) => s + (l.qty * l.rate * (1 - l.discount_percent / 100)), 0);
   const taxAmt = lineItems.reduce((s, l) => { const b = l.qty * l.rate * (1 - l.discount_percent / 100); return s + (b * l.tax_rate / 100); }, 0);
@@ -93,9 +100,16 @@ export default function QuotationFormScreen({ route, navigation }: { route: any;
               <View style={styles.row}>
                 <View style={{ flex: 1 }}><Text style={styles.mini}>Qty</Text><TextInput style={styles.miniInput} value={String(li.qty)} onChangeText={v => updateLine(idx, 'qty', parseFloat(v) || 0)} keyboardType="decimal-pad" /></View>
                 <View style={{ flex: 1, marginLeft: 8 }}><Text style={styles.mini}>Rate</Text><TextInput style={styles.miniInput} value={String(li.rate)} onChangeText={v => updateLine(idx, 'rate', parseFloat(v) || 0)} keyboardType="decimal-pad" /></View>
+                <View style={{ flex: 1, marginLeft: 8 }}><Text style={styles.mini}>Disc%</Text><TextInput style={styles.miniInput} value={String(li.discount_percent)} onChangeText={v => updateLine(idx, 'discount_percent', parseFloat(v) || 0)} keyboardType="decimal-pad" /></View>
                 <View style={{ flex: 1, marginLeft: 8 }}><Text style={styles.mini}>Tax%</Text><TextInput style={styles.miniInput} value={String(li.tax_rate)} onChangeText={v => updateLine(idx, 'tax_rate', parseFloat(v) || 0)} keyboardType="decimal-pad" /></View>
               </View>
-              <Text style={styles.lineAmt}>₹{calc(li).toFixed(2)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                <Text style={styles.lineAmt}>₹{calc(li).toFixed(2)}</Text>
+                <TouchableOpacity onPress={() => insertLine(idx)} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4 }}>
+                  <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+                  <Text style={{ fontSize: 11, color: colors.primary, marginLeft: 4 }}>Insert Row</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ))}
         </View>

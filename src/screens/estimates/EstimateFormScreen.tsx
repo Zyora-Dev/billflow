@@ -131,6 +131,17 @@ export default function EstimateFormScreen({ route, navigation }: { route: any; 
   };
 
   const removeLine = (idx: number) => setLineItems(p => p.filter((_, i) => i !== idx));
+  const insertLine = (afterIdx: number) => {
+    setLineItems(p => {
+      const copy = [...p];
+      copy.splice(afterIdx + 1, 0, {
+        item_id: undefined, item_name: '', description: '', hsn_code: '',
+        unit: 'Nos', qty: 1, rate: 0, discount_percent: 0, tax_rate: 0,
+        amount: 0, serial_numbers: '',
+      });
+      return copy;
+    });
+  };
 
   const handleGstToggle = (val: boolean) => {
     setGstEnabled(val);
@@ -313,7 +324,13 @@ export default function EstimateFormScreen({ route, navigation }: { route: any; 
                 <TextInput style={styles.miniInput} value={li.serial_numbers} onChangeText={v => updateLine(idx, 'serial_numbers', v)} placeholder="Optional (comma-separated)" placeholderTextColor={colors.placeholder} />
               </View>
 
-              <Text style={styles.lineAmt}>₹{calc(li).toFixed(2)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                <Text style={styles.lineAmt}>₹{calc(li).toFixed(2)}</Text>
+                <TouchableOpacity onPress={() => insertLine(idx)} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4 }}>
+                  <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+                  <Text style={{ fontSize: 11, color: colors.primary, marginLeft: 4 }}>Insert Row</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ))}
         </View>

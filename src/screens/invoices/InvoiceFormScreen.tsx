@@ -121,7 +121,9 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
   const calcLineAmount = (li: LineItem) => {
     const base = li.qty * li.rate;
     const afterDisc = base - (base * li.discount_percent / 100);
-    return afterDisc + (afterDisc * li.tax_rate / 100);
+    const tax = afterDisc * (li.tax_rate / 100);
+    const rateIncl = li.rate * (1 + li.tax_rate / 100);
+    return { afterDisc, tax, amount: afterDisc + tax, rateIncl };
   };
 
   const addItem = (item: any) => {
@@ -148,12 +150,24 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
     setLineItems(prev => {
       const updated = [...prev];
       (updated[idx] as any)[key] = val;
-      updated[idx].amount = calcLineAmount(updated[idx]);
+      updated[idx].amount = calcLineAmount(updated[idx]).amount;
       return updated;
     });
   };
 
   const removeLine = (idx: number) => setLineItems(prev => prev.filter((_, i) => i !== idx));
+
+  const insertLine = (afterIdx: number) => {
+    setLineItems(prev => {
+      const newItem: LineItem = {
+        item_id: undefined, item_name: '', description: '', hsn_code: '',
+        unit: 'Nos', qty: 1, rate: 0, discount_percent: 0, tax_rate: 0, amount: 0, serial_numbers: '',
+      };
+      const copy = [...prev];
+      copy.splice(afterIdx + 1, 0, newItem);
+      return copy;
+    });
+  };
 
   const subtotal = lineItems.reduce((sum, li) => sum + (li.qty * li.rate * (1 - li.discount_percent / 100)), 0);
   const taxAmount = lineItems.reduce((sum, li) => {
@@ -189,7 +203,7 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
           hsn_code: li.hsn_code || null,
           unit: li.unit, qty: li.qty, rate: li.rate,
           discount_percent: li.discount_percent, tax_rate: li.tax_rate,
-          amount: calcLineAmount(li),
+          amount: calcLineAmount(li).amount,
           serial_numbers: li.serial_numbers || null,
         })),
       };
@@ -358,8 +372,8 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
                   <TextInput style={styles.miniInput} value={String(li.qty)} onChangeText={v => updateLine(idx, 'qty', parseFloat(v) || 0)} keyboardType="decimal-pad" />
                 </View>
                 <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Text style={styles.miniLabel}>Rate</Text>
-                  <TextInput style={styles.miniInput} value={String(li.rate)} onChangeText={v => updateLine(idx, 'rate', parseFloat(v) || 0)} keyboardType="decimal-pad" />
+                  <Text style={styles.miniLabel}>Rate (Incl. GST)</Text>
+                  <TextInput style={styles.miniInput} value={calcLineAmount(li).rateIncl.toFixed(2)} onChangeText={v => { const inclVal = parseFloat(v) || 0; const taxR = li.tax_rate || 0; const netRate = inclVal / (1 + taxR / 100); updateLine(idx, 'rate', parseFloat(netRate.toFixed(2))); }} keyboardType="decimal-pad" />
                 </View>
                 {!isPrivate && (
                 <View style={{ flex: 1, marginLeft: 8 }}>
@@ -368,11 +382,27 @@ export default function InvoiceFormScreen({ route, navigation }: { route: any; n
                 </View>
                 )}
               </View>
+              <View style={styles.row}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.miniLabel}>Rate (Excl. GST)</Text>
+                  <TextInput style={styles.miniInput} value={String(li.rate)} onChangeText={v => updateLine(idx, 'rate', parseFloat(v) || 0)} keyboardType="decimal-pad" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={styles.miniLabel}>Disc %</Text>
+                  <TextInput style={styles.miniInput} value={String(li.discount_percent)} onChangeText={v => updateLine(idx, 'discount_percent', parseFloat(v) || 0)} keyboardType="decimal-pad" />
+                </View>
+              </View>
               <View style={{ marginTop: 6 }}>
                 <Text style={styles.miniLabel}>Serial Numbers</Text>
                 <TextInput style={[styles.miniInput, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, color: '#2563eb' }]} value={li.serial_numbers} onChangeText={v => updateLine(idx, 'serial_numbers', v)} placeholder="Serial nos (comma separated)" placeholderTextColor="#93c5fd" />
               </View>
-              <Text style={styles.lineAmt}>Amount: ₹{calcLineAmount(li).toFixed(2)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                <Text style={styles.lineAmt}>Amount: ₹{calcLineAmount(li).afterDisc.toFixed(2)}</Text>
+                <TouchableOpacity onPress={() => insertLine(idx)} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4 }}>
+                  <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+                  <Text style={{ fontSize: 11, color: colors.primary, marginLeft: 4 }}>Insert Row</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ))}
         </View>
