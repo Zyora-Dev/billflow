@@ -77,7 +77,7 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
   const [status, setStatus] = useState('All');
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState<'task' | 'order' | 'payments'>('task');
+  const [tab, setTab] = useState<'task' | 'order' | 'payments' | 'order_payments'>('task');
   const [period, setPeriod] = useState<Period>('all');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -139,7 +139,7 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
     } catch {} finally { setSpLoading(false); }
   }, [orgId, spDateFrom, spDateTo]);
 
-  useEffect(() => { if (tab === 'payments' && orgId) fetchServicePayments(); }, [tab, orgId, fetchServicePayments]);
+  useEffect(() => { if ((tab === 'payments' || tab === 'order_payments') && orgId) fetchServicePayments(); }, [tab, orgId, fetchServicePayments]);
 
   // Complete with payment
   const openPaymentDialog = (task: any) => {
@@ -149,6 +149,7 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
       payment_method: 'Cash',
       payment_date: new Date().toISOString().split('T')[0],
       reference_number: '', notes: '',
+      payment_type: task.task_type === 'order' ? 'order' : 'service',
     });
     setPaymentDialogOpen(true);
   };
@@ -165,6 +166,7 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
           payment_date: paymentForm.payment_date,
           reference_number: paymentForm.reference_number || null,
           notes: paymentForm.notes || null,
+          payment_type: paymentForm.payment_type || 'service',
         });
       }
       await api.patch(`/api/tasks/${paymentTask.id}/status?status=Completed`);
@@ -372,9 +374,11 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
     const cm = item.category ? CAT_META[item.category] : null;
     const isOverdue = item.due_date && item.status !== 'Completed' && new Date(item.due_date) < new Date(new Date().toDateString());
 
+    const isDone = item.status === 'Completed';
+
     return (
       <TouchableOpacity
-        style={s.card}
+        style={[s.card, isDone && { backgroundColor: '#064e3b', borderColor: '#064e3b' }]}
         onPress={() => navigation.navigate('TaskDetail', { id: item.id })}
         onLongPress={() => quickStatus(item.id, item.status)}
         activeOpacity={0.85}
@@ -382,7 +386,7 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
         <View style={[s.prioStrip, { backgroundColor: pColor }]} />
         <View style={{ flex: 1, paddingLeft: 10 }}>
           <View style={s.cardTop}>
-            <Text style={s.cardTitle} numberOfLines={1}>{item.title}</Text>
+            <Text style={[s.cardTitle, isDone && { color: '#fff' }]} numberOfLines={1}>{item.title}</Text>
             <View style={[s.statusBadge, { backgroundColor: sm.bg }]}>
               <Text style={[s.statusBadgeText, { color: sm.color }]}>{item.status}</Text>
             </View>
@@ -395,14 +399,20 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
                 <Text style={[s.metaChipText, { color: cm.color }]}>{item.category}</Text>
               </View>
             )}
+            {item.service_type ? (
+              <View style={[s.metaChip, { backgroundColor: item.service_type === 'In Call' ? '#cffafe' : '#ffedd5' }]}>
+                <Ionicons name={item.service_type === 'In Call' ? 'call' : 'walk'} size={10} color={item.service_type === 'In Call' ? '#0891b2' : '#ea580c'} />
+                <Text style={[s.metaChipText, { color: item.service_type === 'In Call' ? '#0891b2' : '#ea580c' }]}>{item.service_type}</Text>
+              </View>
+            ) : null}
             <View style={[s.metaChip, { backgroundColor: pColor + '15' }]}>
               <View style={[s.dot, { backgroundColor: pColor }]} />
               <Text style={[s.metaChipText, { color: pColor }]}>{item.priority}</Text>
             </View>
             {item.task_date && (
               <View style={s.metaInline}>
-                <Ionicons name="calendar-outline" size={10} color={colors.gray500} />
-                <Text style={s.metaInlineText}>{item.task_date}{item.task_time ? ` • ${item.task_time}` : ''}</Text>
+                <Ionicons name="calendar-outline" size={10} color={isDone ? 'rgba(255,255,255,0.6)' : colors.gray500} />
+                <Text style={[s.metaInlineText, isDone && { color: 'rgba(255,255,255,0.7)' }]}>{item.task_date}{item.task_time ? ` • ${item.task_time}` : ''}</Text>
               </View>
             )}
           </View>
@@ -410,14 +420,14 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
           <View style={[s.metaRow, { marginTop: 6 }]}>
             {item.customer_name ? (
               <View style={s.metaInline}>
-                <Ionicons name="person" size={10} color={colors.gray500} />
-                <Text style={s.metaInlineText} numberOfLines={1}>{item.customer_name}</Text>
+                <Ionicons name="person" size={10} color={isDone ? 'rgba(255,255,255,0.6)' : colors.gray500} />
+                <Text style={[s.metaInlineText, isDone && { color: 'rgba(255,255,255,0.7)' }]} numberOfLines={1}>{item.customer_name}</Text>
               </View>
             ) : null}
             {item.employee_name ? (
               <View style={s.metaInline}>
-                <Ionicons name="briefcase-outline" size={10} color={colors.gray500} />
-                <Text style={s.metaInlineText} numberOfLines={1}>{item.employee_name}</Text>
+                <Ionicons name="briefcase-outline" size={10} color={isDone ? 'rgba(255,255,255,0.6)' : colors.gray500} />
+                <Text style={[s.metaInlineText, isDone && { color: 'rgba(255,255,255,0.7)' }]} numberOfLines={1}>{item.employee_name}</Text>
               </View>
             ) : null}
           </View>
@@ -447,24 +457,24 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
 
   return (
     <View style={s.container}>
-      {tab === 'payments' ? (
+      {tab === 'payments' || tab === 'order_payments' ? (
         /* ═══ SERVICE PAYMENTS TAB ═══ */
         <FlatList
-          data={spStats.data}
+          data={tab === 'order_payments' ? spStats.data.filter((p: any) => p.payment_type === 'order' || p.payment_type === 'both') : spStats.data}
           keyExtractor={(i, idx) => `sp-${i?.id ?? idx}`}
           refreshControl={<RefreshControl refreshing={spLoading} onRefresh={() => fetchServicePayments()} />}
           contentContainerStyle={{ paddingBottom: 100 }}
           ListHeaderComponent={
             <View>
               {/* Hero card */}
-              <View style={[s.hero, { backgroundColor: '#065f46' }]}>
-                <View style={[s.heroAccent, { backgroundColor: '#047857' }]} />
+              <View style={[s.hero, { backgroundColor: tab === 'order_payments' ? '#5b21b6' : '#065f46' }]}>
+                <View style={[s.heroAccent, { backgroundColor: tab === 'order_payments' ? '#6d28d9' : '#047857' }]} />
                 <View style={[s.heroAccent2, { backgroundColor: 'rgba(255,255,255,0.04)' }]} />
                 <View style={s.heroTopRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.heroEyebrow}>Service Collections</Text>
-                    <Text style={s.heroValue}>₹{spStats.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</Text>
-                    <Text style={s.heroSub}>{spStats.count} payments collected</Text>
+                    <Text style={s.heroEyebrow}>{tab === 'order_payments' ? 'Order Collections' : 'Service Collections'}</Text>
+                    <Text style={s.heroValue}>₹{(tab === 'order_payments' ? spStats.data.filter((p: any) => p.payment_type === 'order' || p.payment_type === 'both').reduce((s: number, p: any) => s + (p.amount || 0), 0) : spStats.total).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</Text>
+                    <Text style={s.heroSub}>{tab === 'order_payments' ? spStats.data.filter((p: any) => p.payment_type === 'order' || p.payment_type === 'both').length : spStats.count} payments collected</Text>
                   </View>
                 </View>
                 <View style={s.kpiRow}>
@@ -497,9 +507,13 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
                   <Ionicons name="cube-outline" size={14} color={colors.gray600} />
                   <Text style={s.tabPillText}>Orders</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[s.tabPill, { backgroundColor: '#065f46', borderColor: '#065f46' }]} activeOpacity={0.85}>
-                  <Ionicons name="cash-outline" size={14} color="#fff" />
-                  <Text style={[s.tabPillText, s.tabPillTextActive]}>Payments</Text>
+                <TouchableOpacity style={[s.tabPill, tab === 'payments' && { backgroundColor: '#065f46', borderColor: '#065f46' }]} onPress={() => setTab('payments')} activeOpacity={0.85}>
+                  <Ionicons name="cash-outline" size={14} color={tab === 'payments' ? '#fff' : colors.gray600} />
+                  <Text style={[s.tabPillText, tab === 'payments' && s.tabPillTextActive]}>Payments</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.tabPill, tab === 'order_payments' && { backgroundColor: '#7c3aed', borderColor: '#7c3aed' }]} onPress={() => setTab('order_payments')} activeOpacity={0.85}>
+                  <Ionicons name="cart-outline" size={14} color={tab === 'order_payments' ? '#fff' : colors.gray600} />
+                  <Text style={[s.tabPillText, tab === 'order_payments' && s.tabPillTextActive]}>Order Pay</Text>
                 </TouchableOpacity>
               </View>
 
@@ -693,6 +707,14 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
                 <Ionicons name="cash-outline" size={14} color={tab === ('payments' as string) ? '#fff' : colors.gray600} />
                 <Text style={[s.tabPillText, tab === ('payments' as string) && s.tabPillTextActive]}>Payments</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.tabPill, tab === ('order_payments' as string) && { backgroundColor: '#7c3aed', borderColor: '#7c3aed' }]}
+                onPress={() => setTab('order_payments')}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="cart-outline" size={14} color={tab === ('order_payments' as string) ? '#fff' : colors.gray600} />
+                <Text style={[s.tabPillText, tab === ('order_payments' as string) && s.tabPillTextActive]}>Order Pay</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Search */}
@@ -867,6 +889,21 @@ export default function TaskListScreen({ navigation }: { navigation: any }) {
                 placeholderTextColor="#d1d5db"
                 multiline
               />
+
+              <Text style={sp.label}>Payment Type</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                {(['service', 'order', 'both'] as const).map(t => {
+                  const active = paymentForm.payment_type === t;
+                  return (
+                    <TouchableOpacity key={t}
+                      style={[sp.methodChip, active && { backgroundColor: '#065f46', borderColor: '#065f46' }]}
+                      onPress={() => setPaymentForm(f => ({ ...f, payment_type: t }))}
+                    >
+                      <Text style={[sp.methodChipText, active && { color: '#fff' }]}>{t === 'service' ? 'Service' : t === 'order' ? 'Order' : 'Both'}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </ScrollView>
 
             <View style={sp.dialogActions}>

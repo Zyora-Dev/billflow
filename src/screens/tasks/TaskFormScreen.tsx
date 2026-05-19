@@ -47,6 +47,7 @@ export default function TaskFormScreen({ route, navigation }: { route: any; navi
     title: '',
     description: '',
     category: '' as '' | 'AMC' | 'Repair' | 'Replacement' | 'Others',
+    service_type: '' as '' | 'In Call' | 'Out Call',
     employee_id: null as number | null,
     employee_name: '',
     customer_id: null as number | null,
@@ -119,6 +120,7 @@ export default function TaskFormScreen({ route, navigation }: { route: any; navi
             title: t.title || '',
             description: t.description || '',
             category: t.category || '',
+            service_type: t.service_type || '',
             employee_id: t.employee_id || null,
             employee_name: t.employee_name || '',
             customer_id: t.customer_id || null,
@@ -229,6 +231,7 @@ export default function TaskFormScreen({ route, navigation }: { route: any; navi
         title: form.title.trim(),
         description: form.description || null,
         category: form.category || null,
+        service_type: form.service_type || null,
         employee_id: form.employee_id,
         customer_id: form.customer_mode === 'select' ? form.customer_id : null,
         customer_name: form.customer_name || null,
@@ -330,6 +333,30 @@ export default function TaskFormScreen({ route, navigation }: { route: any; navi
                     >
                       <Ionicons name={c.icon} size={18} color={sel ? c.color : colors.gray500} />
                       <Text style={[st.catTileText, sel && { color: c.color, fontWeight: '800' }]}>{c.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+
+          {!isOrder && (
+            <>
+              <Label text="Service Type" />
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                {(['In Call', 'Out Call'] as const).map(st => {
+                  const sel = form.service_type === st;
+                  return (
+                    <TouchableOpacity
+                      key={st}
+                      style={[{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: sel ? (st === 'In Call' ? '#0891b2' : '#ea580c') : '#e5e7eb', backgroundColor: sel ? (st === 'In Call' ? '#cffafe' : '#ffedd5') : '#fafafa' }]}
+                      onPress={() => update('service_type', sel ? '' : st)}
+                      activeOpacity={0.85}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name={st === 'In Call' ? 'call' : 'walk'} size={14} color={sel ? (st === 'In Call' ? '#0891b2' : '#ea580c') : colors.gray500} />
+                        <Text style={{ fontSize: 12, fontWeight: sel ? '700' : '500', color: sel ? (st === 'In Call' ? '#0891b2' : '#ea580c') : colors.gray600 }}>{st}</Text>
+                      </View>
                     </TouchableOpacity>
                   );
                 })}

@@ -49,7 +49,7 @@ export default function TaskDetailScreen({ route, navigation }: { route: any; na
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
     amount: '', payment_method: 'Cash', payment_date: new Date().toISOString().split('T')[0],
-    reference_number: '', notes: '',
+    reference_number: '', notes: '', payment_type: 'service',
   });
   const [submittingPayment, setSubmittingPayment] = useState(false);
 
@@ -77,6 +77,7 @@ export default function TaskDetailScreen({ route, navigation }: { route: any; na
         payment_method: 'Cash',
         payment_date: new Date().toISOString().split('T')[0],
         reference_number: '', notes: '',
+        payment_type: task?.task_type === 'order' ? 'order' : 'service',
       });
       setPaymentDialogOpen(true);
       return;
@@ -98,6 +99,7 @@ export default function TaskDetailScreen({ route, navigation }: { route: any; na
           payment_date: paymentForm.payment_date,
           reference_number: paymentForm.reference_number || null,
           notes: paymentForm.notes || null,
+          payment_type: paymentForm.payment_type || 'service',
         });
       }
       await api.patch(`/api/tasks/${id}/status?status=Completed`);
@@ -202,6 +204,12 @@ export default function TaskDetailScreen({ route, navigation }: { route: any; na
                 <Text style={st.heroBadgeText}>{task.category}</Text>
               </View>
             )}
+            {task.service_type ? (
+              <View style={[st.heroBadge, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+                <Ionicons name={task.service_type === 'In Call' ? 'call' : 'walk'} size={11} color="#fff" />
+                <Text style={st.heroBadgeText}>{task.service_type}</Text>
+              </View>
+            ) : null}
           </View>
           <Text style={st.heroTitle}>{task.title}</Text>
           {task.description ? <Text style={st.heroDesc}>{task.description}</Text> : null}
@@ -559,6 +567,21 @@ export default function TaskDetailScreen({ route, navigation }: { route: any; na
                 placeholderTextColor="#d1d5db"
                 multiline
               />
+
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#374151', marginTop: 12, marginBottom: 4 }}>Payment Type</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                {(['service', 'order', 'both'] as const).map(t => {
+                  const active = paymentForm.payment_type === t;
+                  return (
+                    <TouchableOpacity key={t}
+                      style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: active ? '#065f46' : '#e5e7eb', backgroundColor: active ? '#065f46' : '#fafafa' }}
+                      onPress={() => setPaymentForm(f => ({ ...f, payment_type: t }))}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? '#fff' : '#6b7280' }}>{t === 'service' ? 'Service' : t === 'order' ? 'Order' : 'Both'}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </ScrollView>
 
             <View style={{ flexDirection: 'column', gap: 8, marginTop: 16 }}>
